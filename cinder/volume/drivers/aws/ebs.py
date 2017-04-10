@@ -22,6 +22,7 @@ from cinder.i18n import _LE
 from cinder.exception import VolumeNotFound, NotFound, APITimeout, InvalidConfigurationValue
 from cinder.volume.driver import BaseVD
 
+from exception import AvailabilityZoneNotFound
 
 aws_group = cfg.OptGroup(name='AWS', title='Options to connect to an AWS environment')
 aws_opts = [
@@ -65,8 +66,13 @@ class EBSDriver(BaseVD):
                                        region=region)
         # resort to first AZ for now. TODO: expose this through API
         az = CONF.AWS.az
-        self._zone = filter(lambda z: z.name == az,
+
+        try:
+            self._zone = filter(lambda z: z.name == az,
                             self._conn.get_all_zones())[0]
+        except IndexError:
+            raise AvailabilityZoneNotFound(az=az)
+
         self.set_initialized()
 
     def _check_config(self):
