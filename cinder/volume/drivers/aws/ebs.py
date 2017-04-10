@@ -22,6 +22,7 @@ from cinder.i18n import _LE
 from cinder.exception import VolumeNotFound, NotFound, APITimeout, InvalidConfigurationValue
 from cinder.volume.driver import BaseVD
 
+from exception import AvailabilityZoneNotFound
 
 aws_group = cfg.OptGroup(name='AWS', title='Options to connect to an AWS environment')
 aws_opts = [
@@ -56,19 +57,6 @@ class EBSDriver(BaseVD):
         self.VERSION = '1.0.0'
         self._wait_time_sec = 60 * (CONF.AWS.wait_time_min)
 
-        self._check_config()
-        region_name = CONF.AWS.region_name
-        endpoint = '.'.join(['ec2', region_name, 'amazonaws.com'])
-        region = RegionInfo(name=region_name, endpoint=endpoint)
-        self._conn = ec2.EC2Connection(aws_access_key_id=CONF.AWS.access_key,
-                                       aws_secret_access_key=CONF.AWS.secret_key,
-                                       region=region)
-        # resort to first AZ for now. TODO: expose this through API
-        az = CONF.AWS.az
-        self._zone = filter(lambda z: z.name == az,
-                            self._conn.get_all_zones())[0]
-        self.set_initialized()
-
     def _check_config(self):
         tbl = dict([(n, eval(n)) for n in ['CONF.AWS.access_key',
                                            'CONF.AWS.secret_key',
@@ -79,7 +67,24 @@ class EBSDriver(BaseVD):
                 raise InvalidConfigurationValue(value=None, option=k)
 
     def do_setup(self, context):
-        pass
+        self._check_config()
+        region_name = CONF.AWS.region_name
+        endpoint = '.'.join(['ec2', region_name, 'amazonaws.com'])
+        region = RegionInfo(name=region_name, endpoint=endpoint)
+        self._conn = ec2.EC2Connection(aws_access_key_id=CONF.AWS.access_key,
+                                       aws_secret_access_key=CONF.AWS.secret_key,
+                                       region=region)
+        # resort to first AZ for now. TODO: expose this through API
+        az = CONF.AWS.az
+
+        try:
+            self._zone = filter(lambda z: z.name == az,
+                            self._conn.get_all_zones())[0]
+        except IndexError:
+            raise AvailabilityZoneNotFound(az=az)
+
+        self.set_initialized()
+
 
     def _wait_for_create(self, id, final_state):
         def _wait_for_status(start_time):
