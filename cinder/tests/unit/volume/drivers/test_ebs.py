@@ -17,9 +17,9 @@ from cinder import context
 from cinder import test
 from cinder.exception import APITimeout, NotFound, VolumeNotFound
 from cinder.volume.drivers.aws import ebs
+from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
 from moto import mock_ec2
 
-import boto
 
 class EBSVolumeTestCase(test.TestCase):
 
@@ -60,6 +60,14 @@ class EBSVolumeTestCase(test.TestCase):
         ss['volume'] = kwargs.get('volume', self._stub_volume())
         ss['display_name'] = kwargs.get('display_name', 'snapshot_007')
         return ss
+
+    @mock_ec2
+    def test_availability_zone_config(self):
+        ebs.CONF.AWS.az = 'hgkjhgkd'
+        driver = ebs.EBSDriver()
+        ctxt = context.get_admin_context()
+        self.assertRaises(AvailabilityZoneNotFound, driver.do_setup, ctxt)
+        ebs.CONF.AWS.az = 'us-east-1a'
 
     @mock_ec2
     def test_volume_create_success(self):
