@@ -15,6 +15,7 @@ Glance store driver: Handles glance image endpoint for AWS AMIs
   [glance_store]
    default_store = aws
    stores = aws
+   show_multiple_locations = true
   [AWS]
    secret_key = <your aws secret access key> 
    access_key = <your aws access key>

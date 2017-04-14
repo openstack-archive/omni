@@ -29,6 +29,8 @@ def list_instances(compute, project, zone):
     :param zone: string, GCE Name of zone
     """
     result = compute.instances().list(project=project, zone=zone).execute()
+    if 'items' not in result:
+        return []
     return result['items']
 
 
@@ -121,16 +123,17 @@ def set_instance_metadata(compute, project, zone, instance, items,
                                            body=metadata).execute()
 
 
-def create_instance(compute, project, zone, name):
+def create_instance(compute, project, zone, name, image_link, machine_link):
     """Create GCE instance
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
     :param name: string, Name of instance to be launched
+    :param image_link: url, GCE Image link for instance launch
+    :param machine_link: url, GCE Machine link for instance launch
     """
-    source_disk_image = "projects/%s/global/images/%s" % (
-        "debian-cloud", "debian-8-jessie-v20170327")
-    machine_type = "zones/%s/machineTypes/n1-standard-1" % zone
+    LOG.info("Launching instance %s with image %s and machine %s" %
+             (name, image_link, machine_link))
 
     config = {
         'kind':
@@ -138,14 +141,14 @@ def create_instance(compute, project, zone, name):
         'name':
         name,
         'machineType':
-        machine_type,
+        machine_link,
 
         # Specify the boot disk and the image to use as a source.
         'disks': [{
             'boot': True,
             'autoDelete': True,
             'initializeParams': {
-                'sourceImage': source_disk_image,
+                'sourceImage': image_link,
             }
         }],
 
@@ -275,3 +278,25 @@ def get_machines_info(compute, project, zone):
         for machine_type in response['items']
     }
     return GCE_MAP
+
+
+def get_images(compute, project):
+    """Return public images info from GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    """
+    response = compute.images().list(project=project,
+                                     filter="status eq READY").execute()
+    if 'items' not in response:
+        return []
+    imgs = filter(lambda img: 'deprecated' not in img, response['items'])
+    return imgs
+
+
+def get_image(compute, project, name):
+    """Return public images info from GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    """
+    result = compute.images().get(project=project, image=name).execute()
+    return result
