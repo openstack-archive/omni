@@ -13,7 +13,8 @@
 # limitations under the License.
 
 '''
-Run this script as: python create-glance-credentials.py <access-key> <secret-key> <region-name>
+1. Source your Openstack RC file.
+2. Run this script as: python create-glance-images-aws.py <access-key> <secret-key> <region-name>
 '''
 
 import boto3
