@@ -166,6 +166,33 @@ class GCEDriver(driver.ComputeDriver):
         """Unplug VIFs from networks."""
         raise NotImplementedError()
 
+    def _process_network_info(self, network_info):
+        if not network_info:
+            raise Exception('Network info missing')
+
+        network_interfaces = []
+
+        for net_info in network_info:
+            # TODO: Add validations
+            gce_network_name = 'net-' + net_info['network']['id']
+            gce_subnet_name = 'subnet-' + net_info['details']['subnet_id']
+            ip_address = net_info['details']['ip_address']
+
+            compute, project = self.gce_svc, self.gce_project
+            gce_network_details = gceutils.get_network(compute, project,
+                                                       gce_network_name)
+            for subnet_link in gce_network_details['subnetworks']:
+                if gce_subnet_name in subnet_link:
+                    gce_subnet_link = subnet_link
+                    break
+            network_interfaces.append({
+                'network': gce_network_details['selfLink'],
+                'subnetwork': gce_subnet_link,
+                'networkIP': ip_address,
+            })  # yapf:disable
+
+        return network_interfaces
+
     def spawn(self, context, instance, image_meta, injected_files,
               admin_password, network_info=None, block_device_info=None):
         """Create a new instance/VM/domain on the virtualization platform.
@@ -190,23 +217,26 @@ class GCEDriver(driver.ComputeDriver):
                                   attached to the instance.
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        instance_name = instance.name
+        # TODO: Use instance id as instance name
+        instance_name = instance.display_name
         LOG.info("Creating instance %s as %s on GCE." % (instance.display_name,
-                                                         instance.name))
+                                                         instance_name))
+        # Image Info
         image_link = instance.system_metadata['image_gce_link']
+        # Flavor Info
         flavor_name = instance.flavor.name
         flavor_link = "zones/%s/machineTypes/%s" % (self.gce_zone, flavor_name)
-        operation = gceutils.create_instance(
-            compute, project, zone, instance_name, image_link, flavor_link)
+        # Network Info
+        network_interfaces = self._process_network_info(network_info)
+        # Create Instance
+        operation = gceutils.create_instance(compute, project, zone,
+                                             instance_name, image_link,
+                                             flavor_link, network_interfaces)
         gceutils.wait_for_operation(compute, project, zone, operation)
         gce_instance = gceutils.get_instance(compute, project, zone,
                                              instance_name)
         # Update GCE info in openstack instance metadata
         instance.metadata.update({'gce_id': gce_instance['name']})
-        public_ip_address = gceutils.get_external_ip(compute, project, zone,
-                                                     gce_instance)
-        if public_ip_address:
-            instance.metadata.update({'public_ip_address': public_ip_address})
         operation = gceutils.set_instance_metadata(
             compute, project, zone, gce_instance['name'], [
                 {
@@ -448,7 +478,6 @@ class GCEDriver(driver.ComputeDriver):
         gce_instance = gceutils.get_instance(compute, project, zone, gce_id)
         power_state = GCE_STATE_MAP[gce_instance['status']]
 
-        # TODO: Get correct flavor info
         gce_flavor = self.gce_flavor_info[instance.flavor.name]
         memory_mb = gce_flavor['memory_mb']
         vcpus = gce_flavor['vcpus']
