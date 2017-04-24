@@ -16,6 +16,7 @@ import six
 import time
 from oslo_log import log as logging
 
+from nova.i18n import _LI
 from googleapiclient.discovery import build
 from oauth2client.client import GoogleCredentials
 
@@ -123,7 +124,8 @@ def set_instance_metadata(compute, project, zone, instance, items,
                                            body=metadata).execute()
 
 
-def create_instance(compute, project, zone, name, image_link, machine_link):
+def create_instance(compute, project, zone, name, image_link, machine_link,
+                    network_interfaces):
     """Create GCE instance
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
@@ -132,20 +134,15 @@ def create_instance(compute, project, zone, name, image_link, machine_link):
     :param image_link: url, GCE Image link for instance launch
     :param machine_link: url, GCE Machine link for instance launch
     """
-    # source_disk_image = "projects/%s/global/images/%s" % (
-    #     "debian-cloud", "debian-8-jessie-v20170327")
-    # machine_link = "zones/%s/machineTypes/n1-standard-1" % zone
-    LOG.info("Launching instance %s with image %s and machine %s" %
-             (name, image_link, machine_link))
+    LOG.info(
+        _LI("Launching instance %s with image %s, machine %s and network %s") %
+        (name, image_link, machine_link, network_interfaces))
 
     config = {
-        'kind':
-        'compute#instance',
-        'name':
-        name,
-        'machineType':
-        machine_link,
-
+        'kind': 'compute#instance',
+        'name': name,
+        'machineType': machine_link,
+        'networkInterfaces': network_interfaces,
         # Specify the boot disk and the image to use as a source.
         'disks': [{
             'boot': True,
@@ -154,18 +151,6 @@ def create_instance(compute, project, zone, name, image_link, machine_link):
                 'sourceImage': image_link,
             }
         }],
-
-        # Specify a network interface with NAT to access the public
-        # internet.
-        'networkInterfaces': [{
-            'network':
-            'global/networks/default',
-            'accessConfigs': [{
-                'type': 'ONE_TO_ONE_NAT',
-                'name': 'External NAT'
-            }]
-        }],
-
         # Allow the instance to access cloud storage and logging.
         'serviceAccounts': [{
             'email':
@@ -176,8 +161,7 @@ def create_instance(compute, project, zone, name, image_link, machine_link):
                 'https://www.googleapis.com/auth/compute'
             ]
         }],
-    }
-
+    }  # yapf:disable
     return compute.instances().insert(project=project, zone=zone,
                                       body=config).execute()
 
@@ -302,4 +286,14 @@ def get_image(compute, project, name):
     :param project: string, GCE Project Id
     """
     result = compute.images().get(project=project, image=name).execute()
+    return result
+
+
+def get_network(compute, project, name):
+    """Return network info
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE network name
+    """
+    result = compute.networks().get(project=project, network=name).execute()
     return result
