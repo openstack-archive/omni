@@ -123,8 +123,7 @@ def set_instance_metadata(compute, project, zone, instance, items,
                                            body=metadata).execute()
 
 
-def create_instance(compute, project, zone, name, image_link, machine_link,
-                    network_interfaces):
+def create_instance(compute, project, zone, name, image_link, machine_link):
     """Create GCE instance
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
@@ -136,8 +135,8 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
     # source_disk_image = "projects/%s/global/images/%s" % (
     #     "debian-cloud", "debian-8-jessie-v20170327")
     # machine_link = "zones/%s/machineTypes/n1-standard-1" % zone
-    LOG.info("Launching instance %s with image %s, machine %s and network %s" %
-             (name, image_link, machine_link, network_interfaces))
+    LOG.info("Launching instance %s with image %s and machine %s" %
+             (name, image_link, machine_link))
 
     config = {
         'kind':
@@ -158,16 +157,14 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
 
         # Specify a network interface with NAT to access the public
         # internet.
-        # 'networkInterfaces': [{
-        #     'network':
-        #     'global/networks/default',
-        #     'accessConfigs': [{
-        #         'type': 'ONE_TO_ONE_NAT',
-        #         'name': 'External NAT'
-        #     }]
-        # }],
-        'networkInterfaces':
-        network_interfaces,
+        'networkInterfaces': [{
+            'network':
+            'global/networks/default',
+            'accessConfigs': [{
+                'type': 'ONE_TO_ONE_NAT',
+                'name': 'External NAT'
+            }]
+        }],
 
         # Allow the instance to access cloud storage and logging.
         'serviceAccounts': [{
@@ -229,8 +226,7 @@ def reset_instance(compute, project, zone, name):
                                      instance=name).execute()
 
 
-def wait_for_operation(compute, project, zone, operation, interval=1,
-                       timeout=60):
+def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     """Wait for GCE operation to complete, raise error if operation failure
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
@@ -243,9 +239,22 @@ def wait_for_operation(compute, project, zone, operation, interval=1,
     if interval < 1:
         raise ValueError("wait_for_operation: Interval should be positive")
     iterations = timeout / interval
+
+    if 'zone' in operation:
+        zone = operation['zone'].split('/')[-1]
+        monitor_request = compute.zoneOperations().get(
+            project=project, zone=zone, operation=operation_name)
+    elif 'region' in operation:
+        region = operation['region'].split('/')[-1]
+        monitor_request = compute.regionOperations().get(
+            project=project, region=region, operation=operation_name)
+    else:
+        monitor_request = compute.globalOperations().get(
+            project=project, operation=operation_name)
+
     for i in range(iterations):
-        result = compute.zoneOperations().get(
-            project=project, zone=zone, operation=operation_name).execute()
+        result = monitor_request.execute()
+        print(result['status'])
         if result['status'] == 'DONE':
             LOG.info("Operation %s status is %s" % (operation_name,
                                                     result['status']))
@@ -308,11 +317,47 @@ def get_image(compute, project, name):
     return result
 
 
+def create_network(compute, project, name):
+    body = {'autoCreateSubnetworks': False, 'name': name}
+    return compute.networks().insert(project=project, body=body).execute()
+
+
 def get_network(compute, project, name):
-    """Return network info
-    :param compute: GCE compute resource object using googleapiclient.discovery
-    :param project: string, GCE Project Id
-    :param name: string, GCE network name
-    """
     result = compute.networks().get(project=project, network=name).execute()
     return result
+
+
+def create_subnet(compute, project, region, name, ipcidr, network_link):
+    body = {
+        'privateIpGoogleAccess': False,
+        'name': name,
+        'ipCidrRange': ipcidr,
+        'network': network_link
+    }
+    return compute.subnetworks().insert(project=project, region=region,
+                                        body=body).execute()
+
+
+def delete_subnet(compute, project, region, name):
+    return compute.subnetworks().delete(project=project, region=region,
+                                        subnetwork=name).execute()
+
+
+def delete_network(compute, project, name):
+    return compute.networks().delete(project=project, network=name).execute()
+
+
+def create_static_ip(compute, project, region, name):
+    return compute.addresses().insert(project=project, region=region, body={
+        'name': name,
+    }).execute()
+
+
+def get_static_ip(compute, project, region, name):
+    return compute.addresses().get(project=project, region=region,
+                                   address=name).execute()
+
+
+def delete_static_ip(compute, project, region, name):
+    return compute.addresses().delete(project=project, region=region,
+                                      address=name).execute()
