@@ -14,7 +14,9 @@
 
 import six
 import time
+import uuid
 from oslo_log import log as logging
+from six.moves import urllib
 
 from googleapiclient.discovery import build
 from oauth2client.client import GoogleCredentials
@@ -123,8 +125,7 @@ def set_instance_metadata(compute, project, zone, instance, items,
                                            body=metadata).execute()
 
 
-def create_instance(compute, project, zone, name, image_link, machine_link,
-                    network_interfaces):
+def create_instance(compute, project, zone, name, image_link, machine_link):
     """Create GCE instance
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
@@ -136,8 +137,8 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
     # source_disk_image = "projects/%s/global/images/%s" % (
     #     "debian-cloud", "debian-8-jessie-v20170327")
     # machine_link = "zones/%s/machineTypes/n1-standard-1" % zone
-    LOG.info("Launching instance %s with image %s, machine %s and network %s" %
-             (name, image_link, machine_link, network_interfaces))
+    LOG.info("Launching instance %s with image %s and machine %s" %
+             (name, image_link, machine_link))
 
     config = {
         'kind':
@@ -158,16 +159,14 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
 
         # Specify a network interface with NAT to access the public
         # internet.
-        # 'networkInterfaces': [{
-        #     'network':
-        #     'global/networks/default',
-        #     'accessConfigs': [{
-        #         'type': 'ONE_TO_ONE_NAT',
-        #         'name': 'External NAT'
-        #     }]
-        # }],
-        'networkInterfaces':
-        network_interfaces,
+        'networkInterfaces': [{
+            'network':
+            'global/networks/default',
+            'accessConfigs': [{
+                'type': 'ONE_TO_ONE_NAT',
+                'name': 'External NAT'
+            }]
+        }],
 
         # Allow the instance to access cloud storage and logging.
         'serviceAccounts': [{
@@ -229,8 +228,7 @@ def reset_instance(compute, project, zone, name):
                                      instance=name).execute()
 
 
-def wait_for_operation(compute, project, zone, operation, interval=1,
-                       timeout=60):
+def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     """Wait for GCE operation to complete, raise error if operation failure
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
@@ -243,9 +241,21 @@ def wait_for_operation(compute, project, zone, operation, interval=1,
     if interval < 1:
         raise ValueError("wait_for_operation: Interval should be positive")
     iterations = timeout / interval
+
+    if 'zone' in operation:
+        zone = operation['zone'].split('/')[-1]
+        monitor_request = compute.zoneOperations().get(
+            project=project, zone=zone, operation=operation_name)
+    elif 'region' in operation:
+        region = operation['region'].split('/')[-1]
+        monitor_request = compute.regionOperations().get(
+            project=project, region=region, operation=operation_name)
+    else:
+        monitor_request = compute.globalOperations().get(
+            project=project, operation=operation_name)
+
     for i in range(iterations):
-        result = compute.zoneOperations().get(
-            project=project, zone=zone, operation=operation_name).execute()
+        result = monitor_request.execute()
         if result['status'] == 'DONE':
             LOG.info("Operation %s status is %s" % (operation_name,
                                                     result['status']))
@@ -308,11 +318,118 @@ def get_image(compute, project, name):
     return result
 
 
+def create_network(compute, project, name):
+    body = {'autoCreateSubnetworks': False, 'name': name}
+    return compute.networks().insert(project=project, body=body).execute()
+
+
 def get_network(compute, project, name):
-    """Return network info
-    :param compute: GCE compute resource object using googleapiclient.discovery
-    :param project: string, GCE Project Id
-    :param name: string, GCE network name
-    """
     result = compute.networks().get(project=project, network=name).execute()
     return result
+
+
+def create_subnet(compute, project, region, name, ipcidr, network_link):
+    body = {
+        'privateIpGoogleAccess': False,
+        'name': name,
+        'ipCidrRange': ipcidr,
+        'network': network_link
+    }
+    return compute.subnetworks().insert(project=project, region=region,
+                                        body=body).execute()
+
+
+def delete_subnet(compute, project, region, name):
+    return compute.subnetworks().delete(project=project, region=region,
+                                        subnetwork=name).execute()
+
+
+def delete_network(compute, project, name):
+    return compute.networks().delete(project=project, network=name).execute()
+
+
+def create_static_ip(compute, project, region, name):
+    return compute.addresses().insert(project=project, region=region, body={
+        'name': name,
+    }).execute()
+
+
+def get_static_ip(compute, project, region, name):
+    return compute.addresses().get(project=project, region=region,
+                                   address=name).execute()
+
+
+def delete_static_ip(compute, project, region, name):
+    return compute.addresses().delete(project=project, region=region,
+                                      address=name).execute()
+
+
+def get_floatingip(compute, project, region, ip):
+    query = 'address eq %s' % ip
+    result = compute.addresses().list(project=project, region=region,
+                                      filter=query).execute()
+    if 'items' in result and len(result['items']) == 1:
+        return result['items'][0]
+
+    raise Exception('Floating IP %s not found' % ip)
+
+
+def allocate_floatingip(compute, project, region):
+    name = 'ip-' + str(uuid.uuid4())
+    operation = create_static_ip(compute, project, region, name)
+    wait_for_operation(compute, project, operation)
+    address = get_static_ip(compute, project, region, name)
+    return address['address']
+
+
+def delete_floatingip(compute, project, region, ip):
+    address = get_floatingip(compute, project, region, ip)
+    name = address['name']
+    operation = delete_static_ip(compute, project, region, name)
+    wait_for_operation(compute, project, operation)
+
+
+def assign_floatingip(compute, project, zone, fixedip, floatingip):
+    instances = list_instances(compute, project, zone)
+    instance_name = None
+    for instance in instances:
+        for interface in instance['networkInterfaces']:
+            if interface['networkIP'] == fixedip:
+                instance_name = instance['name']
+                interface_name = interface['name']
+                break
+    if not instance_name:
+        raise Exception('Instance with fixed ip %s not found' % fixedip)
+
+    LOG.info('Assigning floating ip %s to instance %s' % (floatingip,
+                                                          instance_name))
+
+    operation = compute.instances().addAccessConfig(
+        project=project, zone=zone, instance=instance_name,
+        networkInterface=interface_name, body={
+            'type': 'ONE_TO_ONE_NAT',
+            'name': 'External NAT',
+            'natIP': floatingip
+        }).execute()
+    wait_for_operation(compute, project, operation)
+
+
+def release_floatingip(compute, project, zone, floatingip):
+    address = get_floatingip(compute, project, zone, floatingip)
+    for user in address.get('users', []):
+        # Parse instance info
+        # Eg. /compute/v1/projects/<name>/zones/<zone>/instances/<name>
+
+        items = urllib.parse.urlparse(user).path.strip('/').split('/')
+        instance, zone = items[-1], items[-3]
+        instance_info = get_instance(compute, project, zone, instance)
+        for interface in instance_info['networkInterfaces']:
+            for accessconfig in interface.get('accessConfigs', []):
+                if accessconfig.get('natIP') == floatingip:
+                    LOG.info('Releasing %s from instance %s' % (floatingip,
+                                                                instance))
+                    operation = compute.instances().deleteAccessConfig(
+                        project=project, zone=zone, instance=instance,
+                        accessConfig=accessconfig['name'],
+                        networkInterface=interface['name']).execute()
+                    wait_for_operation(compute, project, operation)
