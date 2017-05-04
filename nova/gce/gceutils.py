@@ -297,3 +297,24 @@ def get_network(compute, project, name):
     """
     result = compute.networks().get(project=project, network=name).execute()
     return result
+
+
+def attach_disk(compute, project, zone, instance_name, disk_name, disk_link):
+    body = {
+        "type": "PERSISTENT",
+        "mode": "READ_WRITE",
+        "source": disk_link,
+        "deviceName": disk_name,
+        "boot": False,
+        "autoDelete": False,
+        "interface": "SCSI"
+    }
+    return compute.instances().attachDisk(project=project, zone=zone,
+                                          instance=instance_name,
+                                          body=body).execute()
+
+
+def detach_disk(compute, project, zone, instance_name, disk_name):
+    return compute.instances().detachDisk(project=project, zone=zone,
+                                          instance=instance_name,
+                                          deviceName=disk_name).execute()

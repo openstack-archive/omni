@@ -333,3 +333,27 @@ def release_floatingip(compute, project, zone, floatingip):
                         accessConfig=accessconfig['name'],
                         networkInterface=interface['name']).execute()
                     wait_for_operation(compute, project, operation)
+
+
+def create_firewall_rule(compute, project, name, network_link, protocol, port,
+                         source_range="0.0.0.0/0"):
+    body = {
+        "kind": "compute#firewall",
+        "name": name,
+        "sourceRanges": [source_range],
+        "sourceTags": [],
+        "targetTags": [],
+        "allowed": [{
+            "IPProtocol": protocol,
+            "ports": [port]
+        }],
+        "direction": "INGRESS",
+        "destinationRanges": [],
+        "priority": 1000,
+        "network": network_link
+    }
+    return compute.firewalls().insert(project=project, body=body).execute()
+
+
+def delete_firewall_rule(compute, project, name):
+    return compute.firewalls().delete(project=project, firewall=name).execute()

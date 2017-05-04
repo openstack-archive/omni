@@ -17,6 +17,9 @@ import random
 from oslo_log import log
 
 import ipaddr
+from neutron.callbacks import events
+from neutron.callbacks import registry
+from neutron.callbacks import resources
 from neutron.common import gceconf
 from neutron.common import gceutils
 from neutron._i18n import _LI
@@ -40,6 +43,22 @@ class GceMechanismDriver(api.MechanismDriver):
         LOG.info(
             _LI("GCE Mechanism driver init with %s project, %s region") %
             (self.gce_project, self.gce_region))
+        self._subscribe_events()
+
+    def _subscribe_events(self):
+        registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
+                           events.BEFORE_DELETE)
+        registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
+                           events.BEFORE_UPDATE)
+        registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
+                           events.BEFORE_CREATE)
+
+        registry.subscribe(self.secgroup_callback,
+                           resources.SECURITY_GROUP_RULE, events.BEFORE_DELETE)
+        registry.subscribe(self.secgroup_callback,
+                           resources.SECURITY_GROUP_RULE, events.BEFORE_UPDATE)
+        registry.subscribe(self.secgroup_callback,
+                           resources.SECURITY_GROUP_RULE, events.BEFORE_CREATE)
 
     def _gce_network_name(self, context):
         return 'net-' + context.current[api.ID]
@@ -64,6 +83,16 @@ class GceMechanismDriver(api.MechanismDriver):
         gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Created network on GCE %s') % name)
 
+        # Add SSH Rule
+        network = gceutils.get_network(compute, project, name)
+        network_link = network['selfLink']
+        protocol, port = 'tcp', '22'
+        rule_name = "{0}-{1}-{2}".format(name, protocol, port)
+        operation = gceutils.create_firewall_rule(compute, project, rule_name,
+                                                  network_link, protocol, port,
+                                                  source_range='0.0.0.0/0')
+        gceutils.wait_for_operation(compute, project, operation)
+
     def update_network_precommit(self, context):
         pass
 
@@ -76,6 +105,13 @@ class GceMechanismDriver(api.MechanismDriver):
     def delete_network_postcommit(self, context):
         compute, project = self.gce_svc, self.gce_project
         name = self._gce_network_name(context)
+
+        # Delete SSH firewall rule
+        protocol, port = 'tcp', '22'
+        rule_name = "{0}-{1}-{2}".format(name, protocol, port)
+        operation = gceutils.delete_firewall_rule(compute, project, rule_name)
+        gceutils.wait_for_operation(compute, project, operation)
+
         operation = gceutils.delete_network(compute, project, name)
         gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Deleted network on GCE %s') % name)
@@ -125,3 +161,6 @@ class GceMechanismDriver(api.MechanismDriver):
         context.set_binding(segment_id, "vip_type_a", fixed_ip_dict,
                             status='ACTIVE')
         return True
+
+    def secgroup_callback(self, resource, event, trigger, **kwargs):
+        LOG.info("{0} {1} {2} {3}".format(resource, event, trigger, kwargs))
