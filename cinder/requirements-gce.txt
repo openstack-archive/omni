@@ -1,0 +1,2 @@
+google-api-python-client
+oslo.service>=1.19.0

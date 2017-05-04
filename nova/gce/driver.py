@@ -18,6 +18,7 @@ import uuid
 
 import nova.conf
 from nova import exception
+from nova.i18n import _LI
 from nova.virt import driver, hardware
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -115,8 +116,9 @@ class GCEDriver(driver.ComputeDriver):
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
         self.gce_flavor_info = gceutils.get_machines_info(
             self.gce_svc, self.gce_project, self.gce_zone)
-        LOG.info("GCE driver init with %s project, %s region" %
-                 (self.gce_project, self.gce_zone))
+        LOG.info(
+            _LI("GCE driver init with %s project, %s region") %
+            (self.gce_project, self.gce_zone))
         if '_GCE_NODES' not in globals():
             set_nodes([CONF.host])
 
@@ -192,6 +194,15 @@ class GCEDriver(driver.ComputeDriver):
 
         return network_interfaces
 
+    def _process_ssh_keys(self, instance):
+        key_name, key_data = instance.key_name, instance.key_data
+        if key_name is None or key_data is None:
+            return {}
+        return {
+            'key': 'ssh-keys',
+            'value': '{0}:{1}'.format(key_name, key_data)
+        }
+
     def spawn(self, context, instance, image_meta, injected_files,
               admin_password, network_info=None, block_device_info=None):
         """Create a new instance/VM/domain on the virtualization platform.
@@ -218,7 +229,8 @@ class GCEDriver(driver.ComputeDriver):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         # TODO: Use instance id as instance name
         instance_name = instance.display_name
-        LOG.info("Creating instance %s as %s on GCE." % (instance.display_name,
+        LOG.info(
+            _LI("Creating instance %s as %s on GCE.") % (instance.display_name,
                                                          instance_name))
         # Image Info
         image_link = instance.system_metadata['image_gce_link']
@@ -236,13 +248,18 @@ class GCEDriver(driver.ComputeDriver):
                                              instance_name)
         # Update GCE info in openstack instance metadata
         instance.metadata.update({'gce_id': gce_instance['name']})
+        gce_metadata = [
+            {
+                'key': 'openstack_id',
+                'value': instance.uuid
+            },
+        ]
+        ssh_keys = self._process_ssh_keys(instance)
+        if ssh_keys:
+            gce_metadata.append(ssh_keys)
         operation = gceutils.set_instance_metadata(
-            compute, project, zone, gce_instance['name'], [
-                {
-                    'key': 'openstack_id',
-                    'value': instance.uuid
-                },
-            ], operation='add')
+            compute, project, zone, gce_instance['name'], gce_metadata,
+            operation='add')
         gceutils.wait_for_operation(compute, project, zone, operation)
         self._uuid_to_gce_instance[instance.uuid] = gceutils.get_instance(
             compute, project, zone, instance_name)
@@ -284,22 +301,22 @@ class GCEDriver(driver.ComputeDriver):
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info('Stopping instance %s' % instance.uuid)
+        LOG.info(_LI('Stopping instance %s') % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info('Starting instance %s' % instance.uuid)
+        LOG.info(_LI('Starting instance %s') % instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info('Soft Reboot Complete for instance %s' % instance.uuid)
+        LOG.info(_LI('Soft Reboot Complete for instance %s') % instance.uuid)
 
     def _hard_reboot(self, context, instance, network_info,
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info('Resetting instance %s' % instance.uuid)
+        LOG.info(_LI('Resetting instance %s') % instance.uuid)
         operation = gceutils.reset_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info('Hard Reboot Complete %s' % instance.uuid)
+        LOG.info(_LI('Hard Reboot Complete %s') % instance.uuid)
 
     @staticmethod
     def get_host_ip_addr():
@@ -351,23 +368,23 @@ class GCEDriver(driver.ComputeDriver):
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info('Stopping instance %s' % instance.uuid)
+        LOG.info(_LI('Stopping instance %s') % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info('Power off complete %s' % instance.uuid)
+        LOG.info(_LI('Power off complete %s') % instance.uuid)
 
     def power_on(self, context, instance, network_info, block_device_info):
         """Power on the specified instance."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info('Starting instance %s' % instance.uuid)
+        LOG.info(_LI('Starting instance %s') % instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info("Power on Complete %s" % instance.uuid)
+        LOG.info(_LI("Power on Complete %s") % instance.uuid)
 
     def soft_delete(self, instance):
         """Deleting the specified instance"""
-        LOG.info("Soft delete instance %s" % instance.uuid)
+        LOG.info(_LI("Soft delete instance %s") % instance.uuid)
         self.destroy(instance)
 
     def restore(self, instance):
@@ -380,7 +397,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info("Pause instance %s" % instance.uuid)
+        LOG.info(_LI("Pause instance %s") % instance.uuid)
         self.power_off(instance)
 
     def unpause(self, instance):
@@ -390,7 +407,7 @@ class GCEDriver(driver.ComputeDriver):
         instance. and powering on such an instance in this method.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info("Unpause instance %s" % instance.uuid)
+        LOG.info(_LI("Unpause instance %s") % instance.uuid)
         self.power_on(context=None, instance=instance, network_info=None,
                       block_device_info=None)
 
@@ -401,7 +418,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info("Suspending instance %s" % instance.uuid)
+        LOG.info(_LI("Suspending instance %s") % instance.uuid)
         self.power_off(instance)
 
     def resume(self, context, instance, network_info, block_device_info=None):
@@ -411,7 +428,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info("Resuming instance %s" % instance.uuid)
+        LOG.info(_LI("Resuming instance %s") % instance.uuid)
         self.power_on(context, instance, network_info, block_device_info)
 
     def destroy(self, context, instance, network_info, block_device_info=None,
@@ -433,22 +450,41 @@ class GCEDriver(driver.ComputeDriver):
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info('Deleting instance %s' % instance.uuid)
+        LOG.info(_LI('Deleting instance %s') % instance.uuid)
         operation = gceutils.delete_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, zone, operation)
-        LOG.info("Destroy Complete %s" % instance.uuid)
+        LOG.info(_LI("Destroy Complete %s") % instance.uuid)
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
                       disk_bus=None, device_type=None, encryption=None):
         """Attach the disk to the instance at mountpoint using info.
         """
-        raise NotImplementedError()
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+        gce_id = self._get_gce_id_from_instance(instance)
+        gce_volume = connection_info['data']
+        disk_name = gce_volume['name'],
+        disk_link = gce_volume['selfLink']
+        operation = gceutils.attach_disk(compute, project, zone, gce_id,
+                                         disk_name, disk_link)
+        gceutils.wait_for_operation(compute, project, zone, operation)
+        LOG.info(
+            _LI("Volume %s attached to instace %s") % (disk_name,
+                                                       instance.uuid))
 
     def detach_volume(self, connection_info, instance, mountpoint,
                       encryption=None):
         """Detach the disk attached to the instance.
         """
-        raise NotImplementedError()
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+        gce_id = self._get_gce_id_from_instance(instance)
+        gce_volume = connection_info['data']
+        disk_name = gce_volume['name']
+        operation = gceutils.detach_disk(compute, project, zone, gce_id,
+                                         disk_name)
+        gceutils.wait_for_operation(compute, project, zone, operation)
+        LOG.info(
+            _LI("Volume %s detached from instace %s") % (disk_name,
+                                                         instance.uuid))
 
     def swap_volume(self, old_connection_info, new_connection_info, instance,
                     mountpoint, resize_to):
