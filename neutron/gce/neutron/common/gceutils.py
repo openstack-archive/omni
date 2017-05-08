@@ -13,10 +13,13 @@
 #    under the License.
 
 import uuid
+import time
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from oauth2client.client import GoogleCredentials
 from oslo_log import log as logging
+from oslo_utils import reflection
 
 from neutron_lib import exceptions as e
 from neutron._i18n import _LI, _
@@ -24,6 +27,46 @@ from oslo_service import loopingcall
 from six.moves import urllib
 
 LOG = logging.getLogger(__name__)
+
+
+class _FixedIntervalWithTimeoutLoopingCall(loopingcall.LoopingCallBase):
+    """A fixed interval looping call with timeout checking mechanism."""
+
+    _RUN_ONLY_ONE_MESSAGE = _("A fixed interval looping call with timeout"
+                              " checking and can only run one function at"
+                              " at a time")
+
+    _KIND = _('Fixed interval looping call with timeout checking.')
+
+    def start(self, interval, initial_delay=None, stop_on_exception=True,
+              timeout=0):
+        start_time = time.time()
+
+        def _idle_for(result, elapsed):
+            delay = round(elapsed - interval, 2)
+            if delay > 0:
+                func_name = reflection.get_callable_name(self.f)
+                LOG.warning('Function %(func_name)r run outlasted '
+                            'interval by %(delay).2f sec',
+                            {'func_name': func_name,
+                             'delay': delay})
+            elapsed_time = time.time() - start_time
+            if timeout > 0 and elapsed_time > timeout:
+                raise loopingcall.LoopingCallTimeOut(
+                    _('Looping call timed out after %.02f seconds') %
+                    elapsed_time)
+            return -delay if delay < 0 else 0
+
+        return self._start(_idle_for, initial_delay=initial_delay,
+                           stop_on_exception=stop_on_exception)
+
+
+# Currently, default oslo.service version(newton) is 1.16.0.
+# Once we upgrade oslo.service >= 1.19.0, we can remove temporary
+# definition _FixedIntervalWithTimeoutLoopingCall
+if not hasattr(loopingcall, 'FixedIntervalWithTimeoutLoopingCall'):
+    loopingcall.FixedIntervalWithTimeoutLoopingCall = \
+            _FixedIntervalWithTimeoutLoopingCall
 
 
 class GceOperationError(Exception):
@@ -333,3 +376,51 @@ def release_floatingip(compute, project, zone, floatingip):
                         accessConfig=accessconfig['name'],
                         networkInterface=interface['name']).execute()
                     wait_for_operation(compute, project, operation)
+
+
+def create_firewall_rule(compute, project, body):
+    """Create firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param body: dict, Information required for creating firewall
+        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#insert
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().insert(project=project, body=body).execute()
+
+
+def update_firewall_rule(compute, project, name, body):
+    """Update existing firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :param body: dict, Information required for updating firewall
+        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#update
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().update(project=project, firewall=name,
+                                      body=body).execute()
+
+
+def delete_firewall_rule(compute, project, name):
+    """Delete firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().delete(project=project, firewall=name).execute()
+
+
+def get_firewall_rule(compute, project, name):
+    """Get firewall rule info in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :return: Firewall info
+    :rtype: dict
+    """
+    return compute.firewalls().get(project=project, firewall=name).execute()
