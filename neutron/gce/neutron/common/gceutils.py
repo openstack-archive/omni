@@ -15,6 +15,7 @@
 import uuid
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from oauth2client.client import GoogleCredentials
 from oslo_log import log as logging
 
@@ -333,3 +334,51 @@ def release_floatingip(compute, project, zone, floatingip):
                         accessConfig=accessconfig['name'],
                         networkInterface=interface['name']).execute()
                     wait_for_operation(compute, project, operation)
+
+
+def create_firewall_rule(compute, project, body):
+    """Create firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param body: dict, Information required for creating firewall
+        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#insert
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().insert(project=project, body=body).execute()
+
+
+def update_firewall_rule(compute, project, name, body):
+    """Update existing firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :param body: dict, Information required for updating firewall
+        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#update
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().update(project=project, firewall=name,
+                                      body=body).execute()
+
+
+def delete_firewall_rule(compute, project, name):
+    """Delete firewall rule in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :return: Operation information
+    :rtype: dict
+    """
+    return compute.firewalls().delete(project=project, firewall=name).execute()
+
+
+def get_firewall_rule(compute, project, name):
+    """Get firewall rule info in GCE
+    :param compute: GCE compute resource object using googleapiclient.discovery
+    :param project: string, GCE Project Id
+    :param name: string, GCE firewall name
+    :return: Firewall info
+    :rtype: dict
+    """
+    return compute.firewalls().get(project=project, firewall=name).execute()
