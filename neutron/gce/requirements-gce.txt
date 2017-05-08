@@ -1,3 +1,2 @@
 google-api-python-client
 ipaddr
-oslo.service>=1.19.0
