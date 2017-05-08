@@ -15,20 +15,22 @@
 
 import hashlib
 import uuid
+import time
 
 import nova.conf
 from nova import exception
+from nova.image import glance
 from nova.i18n import _LI
 from nova.virt import driver, hardware
 from oslo_config import cfg
 from oslo_log import log as logging
+from nova.compute import task_states
 
 import gceutils
 
 from nova.virt.gce.constants import GCE_STATE_MAP
 
 LOG = logging.getLogger(__name__)
-
 gce_group = cfg.OptGroup(name='GCE',
                          title='Options to connect to Google cloud')
 
@@ -243,7 +245,7 @@ class GCEDriver(driver.ComputeDriver):
         operation = gceutils.create_instance(compute, project, zone,
                                              instance_name, image_link,
                                              flavor_link, network_interfaces)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         gce_instance = gceutils.get_instance(compute, project, zone,
                                              instance_name)
         # Update GCE info in openstack instance metadata
@@ -260,7 +262,7 @@ class GCEDriver(driver.ComputeDriver):
         operation = gceutils.set_instance_metadata(
             compute, project, zone, gce_instance['name'], gce_metadata,
             operation='add')
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         self._uuid_to_gce_instance[instance.uuid] = gceutils.get_instance(
             compute, project, zone, instance_name)
 
@@ -269,8 +271,154 @@ class GCEDriver(driver.ComputeDriver):
         :param context: security context
         :param instance: nova.objects.instance.Instance
         :param image_id: Reference to a pre-created image holding the snapshot.
+
+        Steps:
+        1. Find boot disk
+        2. Stop instance
+        3. Create temporary boot disk snapshot
+        4. Start instance
+        5. Create temporary disk from snapshot
+        6. Create image from disk
+        7. Add Image info to glance
+        8. Delete temporary disk
+        9. Delete temporary snapshot
         """
-        raise NotImplementedError()
+        instance_stopped = False
+        temp_disk_snapshot = False
+        temp_disk_from_snapshot = False
+        image_created = False
+
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+
+        try:
+            gce_id = self._get_gce_id_from_instance(instance)
+            LOG.info(_LI("Taking snapshot of instance %s") % instance.uuid)
+            try:
+                boot_disk = gceutils.get_instance_boot_disk(
+                    compute, project, zone, gce_id)
+            except AssertionError:
+                raise exception.InvalidMetadata(
+                    reason=
+                    "Unable to find boot disk from instance metatadata %s" %
+                    instance.uuid)
+            disk_name = boot_disk['name']
+            LOG.debug(
+                _LI("1. Found boot disk %s for instance %s") % (disk_name,
+                                                                instance.uuid))
+
+            operation = gceutils.stop_instance(compute, project, zone, gce_id)
+            gceutils.wait_for_operation(compute, project, operation)
+            instance_stopped = True
+            LOG.debug(
+                _LI("2. Temporarily stopped instance %s") % instance.uuid)
+
+            snapshot_name = 'novasnap-' + disk_name + time.strftime("%s")
+            operation = gceutils.snapshot_disk(
+                compute, project, zone, boot_disk['name'], snapshot_name)
+            gceutils.wait_for_operation(compute, project, operation)
+            temp_disk_snapshot = True
+            LOG.debug(_LI("3. Created boot disk snapshot %s") % snapshot_name)
+
+            operation = gceutils.start_instance(compute, project, zone, gce_id)
+            gceutils.wait_for_operation(compute, project, operation)
+            instance_stopped = False
+            LOG.debug(
+                _LI("4. Restart instance after disk snapshot %s") %
+                instance.uuid)
+
+            snapshot_disk_name = 'vol-' + snapshot_name
+            operation = gceutils.create_disk_from_snapshot(
+                compute, project, zone, snapshot_disk_name, snapshot_name)
+            gceutils.wait_for_operation(compute, project, operation)
+            snapshot_disk_info = gceutils.get_disk(compute, project, zone,
+                                                   snapshot_disk_name)
+            temp_disk_from_snapshot = True
+            LOG.debug(
+                _LI("5. Created disk %s from snapshot %s") %
+                (snapshot_disk_name, snapshot_name))
+
+            update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
+            image_api = glance.get_default_image_service()
+            image_data = image_api.show(context, image_id)
+            name = image_data['name']
+            operation = gceutils.create_image_from_disk(
+                compute, project, name, snapshot_disk_info['selfLink'])
+            gceutils.wait_for_operation(compute, project, operation,
+                                        timeout=120)
+            image_created = True
+            LOG.debug(
+                _LI("6. Created image %s from disk %s") % (name,
+                                                           snapshot_disk_name))
+            LOG.info(
+                _LI("Created GCE image %s from instance %s") % (name,
+                                                                instance.uuid))
+
+            update_task_state(task_state=task_states.IMAGE_UPLOADING,
+                              expected_state=task_states.IMAGE_PENDING_UPLOAD)
+            gce_img_data = gceutils.get_image(compute, project, name)
+            image_metadata = {
+                'name': name,
+                'container_format': 'bare',
+                'disk_format': 'raw',
+                'is_public': False,
+                'status': 'active',
+                'properties': {
+                    'image_state': 'available',
+                    'owner_id': instance.project_id,
+                    'ramdisk_id': instance.ramdisk_id,
+                    'location': 'gce://%s/%s/%s' % (project, name, image_id),
+                    'gce_image_id': gce_img_data['id'],
+                    'gce_link': gce_img_data['selfLink'],
+                    'gce_size': gce_img_data['diskSizeGb']
+                },
+            }
+            image_api.update(context, image_id, image_metadata)
+            LOG.debug(_LI("7. Added image to glance %s") % name)
+
+            disk_operation = gceutils.delete_disk(compute, project, zone,
+                                                  snapshot_disk_name)
+            snap_operation = gceutils.delete_snapshot(compute, project,
+                                                      snapshot_name)
+            gceutils.wait_for_operation(compute, project, disk_operation)
+            temp_disk_from_snapshot = False
+            LOG.debug(_LI("8. Delete temporary disk %s") % snapshot_disk_name)
+
+            gceutils.wait_for_operation(compute, project, snap_operation)
+            temp_disk_snapshot = False
+            LOG.debug(
+                _LI("9. Delete temporary disk snapshot %s") % snapshot_name)
+            LOG.info(_LI("Completed snapshot for instance %s") % instance.uuid)
+
+        except Exception as e:
+            LOG.exception("An error occured during image creation: %s" % e)
+            if instance_stopped:
+                operation = gceutils.start_instance(compute, project, zone,
+                                                    gce_id)
+                gceutils.wait_for_operation(compute, project, operation)
+                LOG.debug(
+                    _LI("Restart instance after disk snapshot %s") %
+                    instance.uuid)
+            if image_created:
+                LOG.info(
+                    _LI("Rollback snapshot for instance %s, deleting image %s from GCE"
+                        ) % (instance.uuid, name))
+                operation = gceutils.delete_image(compute, project, name)
+                gceutils.wait_for_operation(compute, project, operation)
+            if temp_disk_from_snapshot:
+                disk_operation = gceutils.delete_disk(compute, project, zone,
+                                                      snapshot_disk_name)
+                gceutils.wait_for_operation(compute, project, disk_operation)
+                LOG.debug(
+                    _LI("Rollback snapshot for instace %s, delete temporary disk %s"
+                        ) % (instance.uuid, snapshot_disk_name))
+            if temp_disk_snapshot:
+                snap_operation = gceutils.delete_snapshot(
+                    compute, project, snapshot_name)
+                gceutils.wait_for_operation(compute, project, snap_operation)
+                LOG.debug(
+                    _LI("Rollback snapshot for instance %s, delete temporary disk snapshot %s"
+                        ) % (instance.uuid, snapshot_name))
+            raise e
 
     def reboot(self, context, instance, network_info, reboot_type,
                block_device_info=None, bad_volumes_callback=None):
@@ -303,10 +451,10 @@ class GCEDriver(driver.ComputeDriver):
         gce_id = self._get_gce_id_from_instance(instance)
         LOG.info(_LI('Stopping instance %s') % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Starting instance %s') % instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Soft Reboot Complete for instance %s') % instance.uuid)
 
     def _hard_reboot(self, context, instance, network_info,
@@ -315,7 +463,7 @@ class GCEDriver(driver.ComputeDriver):
         gce_id = self._get_gce_id_from_instance(instance)
         LOG.info(_LI('Resetting instance %s') % instance.uuid)
         operation = gceutils.reset_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Hard Reboot Complete %s') % instance.uuid)
 
     @staticmethod
@@ -370,7 +518,7 @@ class GCEDriver(driver.ComputeDriver):
         gce_id = self._get_gce_id_from_instance(instance)
         LOG.info(_LI('Stopping instance %s') % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI('Power off complete %s') % instance.uuid)
 
     def power_on(self, context, instance, network_info, block_device_info):
@@ -379,7 +527,7 @@ class GCEDriver(driver.ComputeDriver):
         gce_id = self._get_gce_id_from_instance(instance)
         LOG.info(_LI('Starting instance %s') % instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI("Power on Complete %s") % instance.uuid)
 
     def soft_delete(self, instance):
@@ -452,7 +600,7 @@ class GCEDriver(driver.ComputeDriver):
         gce_id = self._get_gce_id_from_instance(instance)
         LOG.info(_LI('Deleting instance %s') % instance.uuid)
         operation = gceutils.delete_instance(compute, project, zone, gce_id)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(_LI("Destroy Complete %s") % instance.uuid)
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
@@ -466,7 +614,7 @@ class GCEDriver(driver.ComputeDriver):
         disk_link = gce_volume['selfLink']
         operation = gceutils.attach_disk(compute, project, zone, gce_id,
                                          disk_name, disk_link)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(
             _LI("Volume %s attached to instace %s") % (disk_name,
                                                        instance.uuid))
@@ -481,7 +629,7 @@ class GCEDriver(driver.ComputeDriver):
         disk_name = gce_volume['name']
         operation = gceutils.detach_disk(compute, project, zone, gce_id,
                                          disk_name)
-        gceutils.wait_for_operation(compute, project, zone, operation)
+        gceutils.wait_for_operation(compute, project, operation)
         LOG.info(
             _LI("Volume %s detached from instace %s") % (disk_name,
                                                          instance.uuid))
