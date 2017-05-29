@@ -462,7 +462,7 @@ class GCEDriver(driver.ComputeDriver):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
         gce_volume = connection_info['data']
-        disk_name = gce_volume['name'],
+        disk_name = gce_volume['name']
         disk_link = gce_volume['selfLink']
         operation = gceutils.attach_disk(compute, project, zone, gce_id,
                                          disk_name, disk_link)
