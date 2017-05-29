@@ -1,0 +1,21 @@
+{
+    "kind": "compute#disk",
+    "id": "3863068144359905908",
+    "creationTimestamp": "2017-05-19T00:54:03.699-07:00",
+    "name": "fake_image",
+    "sizeGb": "10",
+    "zone": "projects/omni-163105/zones/us-central1-c",
+    "status": "READY",
+    "selfLink": "projects/omni-163105/zones/us-central1-c/disks/fake_image",
+    "sourceImage": "projects/debian-cloud/global/images/debian-8-jessie-v20170426",
+    "sourceImageId": "3046052394135714188",
+    "type": "projects/omni-163105/zones/us-central1-c/diskTypes/pd-standard",
+    "licenses": [
+        "projects/debian-cloud/global/licenses/debian-8-jessie"
+    ],
+    "lastAttachTimestamp": "2017-05-19T00:54:03.702-07:00",
+    "users": [
+        "projects/omni-163105/zones/us-central1-c/instances/fake_image"
+    ],
+    "labelFingerprint": "42WmSpB8rSM="
+}
