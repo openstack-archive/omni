@@ -12,8 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
 import mock
+import os
 
 from nova import test
 from nova import context
@@ -84,13 +84,14 @@ class GCENovaTestCase(test.TestCase):
         instance_link = self.instance.system_metadata['image_gce_link']
         flavor_link = "zones/%s/machineTypes/%s" % (self._driver.gce_zone,
                                                     self.instance.flavor.name)
+        gce_instance_name = 'inst-' + self.instance.uuid
         mock_create.assert_called_once_with(
             self._driver.gce_svc, self._driver.gce_project,
-            self._driver.gce_zone, self.instance.display_name, instance_link,
+            self._driver.gce_zone, gce_instance_name, instance_link,
             flavor_link, network_interfaces)
         mock_get.assert_called_with(
             self._driver.gce_svc, self._driver.gce_project,
-            self._driver.gce_zone, self.instance.display_name)
+            self._driver.gce_zone, gce_instance_name)
 
     @mock.patch('nova.virt.gce.driver.gceutils.set_instance_metadata')
     @mock.patch('nova.virt.gce.driver.gceutils.get_instance')
