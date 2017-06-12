@@ -312,7 +312,7 @@ class GCEDriver(driver.ComputeDriver):
             LOG.debug(
                 _LI("2. Temporarily stopped instance %s") % instance.uuid)
 
-            snapshot_name = 'novasnap-' + disk_name + time.strftime("%s")
+            snapshot_name = 'nsnap-' + disk_name + time.strftime("%s")
             operation = gceutils.snapshot_disk(
                 compute, project, zone, boot_disk['name'], snapshot_name)
             gceutils.wait_for_operation(compute, project, operation)
