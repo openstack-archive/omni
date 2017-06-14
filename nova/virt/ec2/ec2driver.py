@@ -70,7 +70,7 @@ aws_opts = [
 ]
 
 CONF = cfg.CONF
-CONF.import_opt('my_ip', 'nova.netconf')
+#CONF.import_opt('my_ip', 'nova.netconf')
 
 CONF.register_group(aws_group)
 CONF.register_opts(aws_opts, group=aws_group)
