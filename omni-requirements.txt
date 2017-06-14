@@ -1,0 +1,4 @@
+google-api-python-client>=1.4.2 # Apache-2.0
+moto
+boto>=2.32.1 # MIT
+ipaddr

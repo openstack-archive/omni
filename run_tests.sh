@@ -1,0 +1,121 @@
+# Copyright (c) 2017 Platform9 Systems Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+#!/usr/bin/env bash
+
+WORKSPACE=$(pwd)
+DIRECTORY="$WORKSPACE/omnitests"
+declare -A results
+declare -i fail
+declare -i pass
+
+if [ -d "$DIRECTORY" ]; then
+    rm -rf $DIRECTORY
+fi
+
+mkdir $DIRECTORY
+
+clone_repos() {
+    project=$1
+    git clone -q -b stable/newton https://github.com/openstack/$project.git $DIRECTORY/$project
+}
+
+copy_cinder_files() {
+    cp -R $WORKSPACE/cinder/tests/unit/volume/drivers/ $DIRECTORY/cinder/cinder/tests/unit/volume/
+    cp -R $WORKSPACE/cinder/volume/drivers/ $DIRECTORY/cinder/cinder/volume/
+}
+
+copy_glance_files() {
+    cp -R $WORKSPACE/glance/glance_store/tests/unit/ $DIRECTORY/glance_store/glance_store/tests
+    cp $WORKSPACE/glance/gce/gceutils.py $DIRECTORY/glance_store/glance_store/_drivers/
+    cp -R $WORKSPACE/glance/glance_store/_drivers/ $DIRECTORY/glance_store/glance_store/
+}
+
+copy_nova_files() {
+    cp -R $WORKSPACE/nova/virt/ $DIRECTORY/nova/nova/
+    cp -R $WORKSPACE/nova/tests/unit/virt $DIRECTORY/nova/nova/tests/unit
+}
+
+copy_neutron_files() {
+    cp -R $WORKSPACE/neutron/neutron/common/ $DIRECTORY/neutron/neutron/
+    cp -R $WORKSPACE/neutron/neutron/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/plugins/ml2/
+    cp $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/neutron/neutron/services/l3_router/
+    cp -R $WORKSPACE/neutron/tests/common/ $DIRECTORY/neutron/neutron/tests/
+    cp -R $WORKSPACE/neutron/tests/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/tests/unit/plugins/ml2/
+}
+
+run_tests() {
+    project=$1
+    tests=$2
+    cd $DIRECTORY/$project
+    cat $WORKSPACE/omni-requirements.txt >> requirements.txt
+    tox -epy27 $tests > $DIRECTORY/$project.log
+}
+
+check_results() {
+    project=$1
+    string="FAILED"
+    fail=$(awk '/Failed: /{print}' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
+    pass=$(awk '/Passed: /{print}' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
+    if [[ $fail > 0 ]]; then
+        results+=( ["$project"]="FAILED" )
+    elif [[ $pass > 0 ]]; then
+        results+=( ["$project"]="PASSED" )
+    else
+        results+=( ["$project"]="UNKNOWN" )
+    fi
+}
+
+echo "============Cloning repos============"
+clone_repos cinder &
+clone_repos nova &
+clone_repos glance_store &
+clone_repos neutron &
+wait
+
+copy_cinder_files
+copy_nova_files
+copy_glance_files
+copy_neutron_files
+
+GCE_TEST="test_gce"
+AWS_TEST="test_ebs"
+
+echo "============Running tests============"
+run_tests cinder "$GCE_TEST $AWS_TEST" &
+run_tests nova "$GCE_TEST $AWS_TEST" &
+run_tests glance_store "$GCE_TEST" &
+run_tests neutron "$GCE_TEST" &
+wait
+
+check_results cinder
+check_results nova
+check_results glance_store
+check_results neutron
+
+echo "==========================================================================================="
+echo "Log files are in $DIRECTORY/. Please check log files for UNKNOWN status."
+echo "Cinder results: ${results[cinder]}"
+echo "Nova results: ${results[nova]}"
+echo "Glance results: ${results[glance_store]}"
+echo "Neutron results: ${results[neutron]}"
+echo "==========================================================================================="
+
+if [ "${results[cinder]}" = "FAILED" ] || \
+    [ "${results[nova]}" = "FAILED" ] || \
+    [ "${results[glance_store]}" = "FAILED" ] || \
+    [ "${results[neutron]}" = "FAILED" ]; then
+    echo "Test cases failed"
+    exit 1
+fi
