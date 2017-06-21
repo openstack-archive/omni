@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Save trace setting
+XTRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+OMNI_DATA_DIR="/opt/stack/omni"
+DIST_PACKAGES="/usr/local/lib/python2.7/dist-packages"
+ENTRY_POINT="$DIST_PACKAGES/glance_store-*.dist-info/entry_points.txt"
+NEUTRON_ENTRY_POINT="/opt/stack/neutron/neutron.egg-info/entry_points.txt"
+
+# Functions
+# ------------
+
+function configure_glance {
+    iniset $GLANCE_API_CONF AWS secret_key ${SECRET_KEY}
+    iniset $GLANCE_API_CONF AWS access_key ${ACCESS_KEY}
+    iniset $GLANCE_API_CONF AWS region_name ${REGION_NAME}
+    sudo crudini --set $ENTRY_POINT glance_store.drivers glance.store.aws.Store glance_store._drivers.aws:Store
+    sudo crudini --set $ENTRY_POINT glance_store.drivers aws glance_store._drivers.aws:Store
+    sudo sed -i -e "s/, 'vsphere'/, 'vsphere', 'aws'/g" $DIST_PACKAGES/glance_store/backend.py
+    sudo cp $OMNI_DATA_DIR/glance/glance_store/_drivers/aws.py /usr/local/lib/python2.7/dist-packages/glance_store/_drivers/
+    sudo systemctl restart devstack@g-api.service devstack@g-reg.service
+}
+
+function configure_cinder {
+    iniset $CINDER_CONF AWS secret_key ${SECRET_KEY}
+    iniset $CINDER_CONF AWS access_key ${ACCESS_KEY}
+    iniset $CINDER_CONF AWS region_name ${REGION_NAME}
+    iniset $CINDER_CONF AWS az ${AVAILABILITY_ZONE}
+    sudo cp -R $OMNI_DATA_DIR/cinder/volume/drivers/aws/ /opt/stack/cinder/cinder/volume/drivers/
+    sudo systemctl restart devstack@c-sch.service devstack@c-vol.service devstack@c-api.service
+}
+
+function configure_nova {
+    iniset $NOVA_CONF AWS secret_key ${SECRET_KEY}
+    iniset $NOVA_CONF AWS access_key ${ACCESS_KEY}
+    iniset $NOVA_CONF AWS region_name ${REGION_NAME}
+    sudo cp -R $OMNI_DATA_DIR/nova/virt/ec2/ /opt/stack/nova/nova/virt/
+    sudo systemctl restart devstack@n-api.service devstack@n-cauth.service devstack@n-cond.service devstack@n-cpu.service devstack@n-novnc.service devstack@n-sch.service
+}
+
+function configure_neutron {
+    iniset $NEUTRON_CONF AWS secret_key ${SECRET_KEY}
+    iniset $NEUTRON_CONF AWS access_key ${ACCESS_KEY}
+    iniset $NEUTRON_CONF AWS region_name ${REGION_NAME}
+    iniset $NEUTRON_CONF AWS az ${AVAILABILITY_ZONE}
+
+    sudo rm -f /etc/neutron/plugins/ml2/ml2_conf.ini
+    touch /etc/neutron/plugins/ml2/ml2_conf.ini
+    sudo chown stack /etc/neutron/plugins/ml2/ml2_conf.ini
+
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers ${ML2_DRIVERS}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types ${ML2_TENANT}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks "*"
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges ${ML2_VLAN_TYPE}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers aws
+
+    sudo crudini --set $NEUTRON_ENTRY_POINT neutron.ml2.mechanism_drivers aws neutron.plugins.ml2.drivers.aws.mechanism_aws:AwsMechanismDriver
+    sudo crudini --set $NEUTRON_ENTRY_POINT neutron.service_plugins aws_router neutron.services.l3_router.aws_router_plugin:AwsRouterPlugin
+
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/plugins/ml2/drivers/aws/ /opt/stack/neutron/neutron/plugins/ml2/drivers/
+    sudo cp $OMNI_DATA_DIR/neutron/neutron/services/l3_router/aws_router_plugin.py /opt/stack/neutron/neutron/services/l3_router/
+    sudo cp $OMNI_DATA_DIR/neutron/neutron/common/* /opt/stack/neutron/neutron/common/
+    sudo systemctl restart devstack@q-agt.service devstack@q-dhcp.service devstack@q-l3.service devstack@q-meta.service devstack@q-svc.service
+}
+
+# Restore xtrace
+$XTRACE
+
+## Local variables:
+## mode: shell-script
+## End:
