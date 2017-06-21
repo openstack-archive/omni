@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Save trace setting
+XTRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+OMNI_DATA_DIR="/opt/stack/omni"
+DIST_PACKAGES="/usr/local/lib/python2.7/dist-packages"
+ENTRY_POINT="$DIST_PACKAGES/glance_store-*.dist-info/entry_points.txt"
+NEUTRON_ENTRY_POINT="/opt/stack/neutron/neutron.egg-info/entry_points.txt"
+# Functions
+# ------------
+
+function configure_glance {
+    iniset $GLANCE_API_CONF DEFAULT show_multiple_locations ${TRUE_VALUE}
+    iniset $GLANCE_API_CONF glance_store default_store ${GCE_SMALL_VALUE}
+    iniset $GLANCE_API_CONF glance_store stores ${GCE_SMALL_VALUE}
+    iniset $GLANCE_API_CONF GCE service_key_path ${SERVICE_KEY_PATH}
+    iniset $GLANCE_API_CONF GCE zone ${GCE_ZONE}
+    iniset $GLANCE_API_CONF GCE project_id ${GCE_PROJECT}
+    sudo crudini --set $ENTRY_POINT glance_store.drivers glance.store.gce.Store glance_store._drivers.gce:Store
+    sudo crudini --set $ENTRY_POINT glance_store.drivers gce glance_store._drivers.gce:Store
+    sudo sed -i -e "s/, 'vsphere')/, 'vsphere', 'gce')/g" $DIST_PACKAGES/glance_store/backend.py
+    sudo cp $OMNI_DATA_DIR/glance/gce/gceutils.py /usr/local/lib/python2.7/dist-packages/glance_store/_drivers/
+    sudo cp $OMNI_DATA_DIR/glance/glance_store/_drivers/gce.py /usr/local/lib/python2.7/dist-packages/glance_store/_drivers/
+    sudo systemctl restart devstack@g-api.service devstack@g-reg.service
+}
+
+function configure_cinder {
+    iniset $CINDER_CONF GCE service_key_path ${SERVICE_KEY_PATH}
+    iniset $CINDER_CONF GCE zone ${GCE_ZONE}
+    iniset $CINDER_CONF GCE project_id ${GCE_PROJECT}
+    iniset $CINDER_CONF GCE region ${GCE_REGION}
+    iniset $CINDER_CONF GCE gce_pool_name ${GCE_SMALL_VALUE}
+    iniset $CINDER_CONF GCE gce_free_capacity_gb ${GCE_CAPACITY}
+    iniset $CINDER_CONF gce_total_capacity_gb ${GCE_CAPACITY}
+    iniset $CINDER_CONF GCE volume_driver ${GCE_CINDER_DRIVER}
+    iniset $CINDER_CONF DEFAULT enable_force_upload ${GCE_ENABLE_FORCE_UPLOAD}
+    iniset $CINDER_CONF DEFAULT enabled_backends ${GCE_CAPITAL_VALUE}
+    iniset $CINDER_CONF DEFAULT volumes_dir ${GCE_VOLUME_DIR}
+    iniset $CINDER_CONF DEFAULT os_privileged_user_name ${GCE_CINDER_USER}
+    iniset $CINDER_CONF DEFAULT default_volume_type ${GCE_CAPITAL_VALUE}
+    iniset $CINDER_CONF DEFAULT os_region_name ${GCE_CAPITAL_VALUE}
+    sudo cp -R $OMNI_DATA_DIR/cinder/volume/drivers/gce/ /opt/stack/cinder/cinder/volume/drivers/
+    sudo systemctl restart devstack@c-sch.service devstack@c-vol.service devstack@c-api.service
+}
+
+function configure_nova {
+    iniset $NOVA_CONF DEFAULT compute_driver ${GCE_COMPUTE_DRIVER}
+    iniset $NOVA_CONF DEFAULT glance_api_insecure ${TRUE_VALUE}
+    iniset $NOVA_CONF DEFAULT cinder_api_insecure ${TRUE_VALUE}
+    iniset $NOVA_CONF DEFAULT vnc_enabled ${TRUE_VALUE}
+    iniset $NOVA_CONF DEFAULT sql_connection ${GCE_SQL}
+    iniset $NOVA_CONF DEFAULT osapi_compute_extension ${GCE_COMPUTE_EXTENSION}
+    iniset $NOVA_CONF DEFAULT force_dhcp_release ${TRUE_VALUE}
+    iniset $NOVA_CONF GCE service_key_path ${SERVICE_KEY_PATH}
+    iniset $NOVA_CONF GCE zone ${GCE_ZONE}
+    iniset $NOVA_CONF GCE project_id ${GCE_PROJECT}
+    sudo cp -R $OMNI_DATA_DIR/nova/virt/gce/ /opt/stack/nova/nova/virt/
+    sudo systemctl restart devstack@n-api.service devstack@n-cauth.service devstack@n-cond.service devstack@n-cpu.service devstack@n-novnc.service devstack@n-sch.service
+}
+
+function configure_neutron {
+    sudo rm -f /etc/neutron/plugins/ml2/ml2_conf.ini
+    touch /etc/neutron/plugins/ml2/ml2_conf.ini
+    sudo chown stack /etc/neutron/plugins/ml2/ml2_conf.ini
+    iniset $NEUTRON_CONF DEFAULT core_plugin ${GCE_CORE_PLUGIN}
+    iniset $NEUTRON_CONF DEFAULT service_plugins ${GCE_SERVICE_PLUGIN}
+    iniset $NEUTRON_CONF GCE service_key_path ${SERVICE_KEY_PATH}
+    iniset $NEUTRON_CONF GCE zone ${GCE_ZONE}
+    iniset $NEUTRON_CONF GCE project_id ${GCE_PROJECT}
+    iniset $NEUTRON_CONF GCE region ${GCE_REGION}
+    iniset $NEUTRON_CONF nova region_name ${GCE_CAPITAL_VALUE}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers ${GCE_ML2_DRIVERS}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types ${GCE_ML2_TENANT}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks ${GCE_ML2_FLAT_TYPE}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges ${GCE_ML2_VLAN_TYPE}
+    iniset /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers ${GCE_SMALL_VALUE}
+    sudo crudini --set $NEUTRON_ENTRY_POINT neutron.ml2.mechanism_drivers gce neutron.plugins.ml2.drivers.gce.mech_gce:GceMechanismDriver
+    sudo crudini --set $NEUTRON_ENTRY_POINT neutron.service_plugins gce_router neutron.services.l3_router.gce_router_plugin:GceRouterPlugin
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/plugins/ml2/drivers/gce/ /opt/stack/neutron/neutron/plugins/ml2/drivers/
+    sudo cp $OMNI_DATA_DIR/neutron/neutron/services/l3_router/gce_router_plugin.py /opt/stack/neutron/neutron/services/l3_router/
+    sudo cp $OMNI_DATA_DIR/neutron/neutron/common/* /opt/stack/neutron/neutron/common/
+    sudo systemctl restart devstack@q-agt.service devstack@q-dhcp.service devstack@q-l3.service devstack@q-meta.service devstack@q-svc.service
+}
+
+# Restore xtrace
+$XTRACE
+
+## Local variables:
+## mode: shell-script
+## End:
