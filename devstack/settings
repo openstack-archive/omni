@@ -1,0 +1,28 @@
+# GCE Common Variables
+SERVICE_KEY_PATH=${SERVICE_KEY_PATH:-/etc/omni.json}
+GCE_ZONE=${GCE_ZONE:-us-central1-c}
+GCE_PROJECT=${GCE_PROJECT:-omni-163105}
+GCE_REGION=${GCE_REGION:-us-central1}
+TRUE_VALUE=${TRUE_VALUE:-True}
+GCE_SMALL_VALUE=${GCE_VALUE:-gce}
+GCE_CAPITAL_VALUE=${GCE_CAPITAL_VALUE:-GCE}
+
+# GCE Cinder Variables
+GCE_CAPACITY=${GCE_CAPACITY:-2048}
+GCE_CINDER_DRIVER=${GCE_CINDER_DRIVER:-cinder.volume.drivers.gce.driver.GceDriver}
+GCE_ENABLE_FORCE_UPLOAD=${GCE_ENABLE_FORCE_UPLOAD:-true}
+GCE_VOLUME_DIR=${GCE_VOLUME_DIR:-/etc/cinder/volumes}
+GCE_CINDER_USER=${GCE_CINDER_USER:-cinder}
+
+# GCE Nova Variables
+GCE_COMPUTE_DRIVER=${GCE_COMPUTE_DRIVER:-gce.GceDriver}
+GCE_SQL=${GCE_SQL:-""}
+GCE_COMPUTE_EXTENSION=${GCE_COMPUTE_EXTENSION:-nova.api.openstack.compute.contrib.standard_extensions}
+
+# GCE Neutron Variables
+GCE_CORE_PLUGIN=${GCE_CORE_PLUGIN:-ml2}
+GCE_SERVICE_PLUGIN=${GCE_SERVICE_PLUGIN:-neutron.services.l3_router.gce_router_plugin.GceRouterPlugin}
+GCE_ML2_DRIVERS=${GCE_ML2_DRIVERS:-local,flat}
+GCE_ML2_TENANT=${GCE_ML2_TENANT:-local}
+GCE_ML2_FLAT_TYPE=${GCE_ML2_FLAT_TYPE:-"*"}
+GCE_ML2_VLAN_TYPE=${GCE_ML2_VLAN_TYPE:-external}
