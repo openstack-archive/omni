@@ -28,8 +28,21 @@ from neutron.plugins.common import constants
 from neutron.quota import resource_registry
 from neutron.services import service_base
 from neutron_lib import constants as n_const
+from neutron_lib import __version__
 
 LOG = logging.getLogger(__name__)
+
+if __version__ == "0.4.0":
+    ROUTER = l3_db.Router
+    FLOATING_IP = l3_db.FloatingIp
+    PLUGIN_TYPE = constants.L3_ROUTER_NAT
+else:
+    from neutron.db.models import l3 as l3_models
+    from neutron_lib.plugins import constants as plugin_constants
+    from neutron_lib.services import base as service_base
+    ROUTER = l3_models.Router
+    FLOATING_IP = l3_models.FloatingIP
+    PLUGIN_TYPE = plugin_constants.L3
 
 
 class GceRouterPlugin(
@@ -51,8 +64,8 @@ class GceRouterPlugin(
         "l3-ha"
     ]
 
-    @resource_registry.tracked_resources(router=l3_db.Router,
-                                         floatingip=l3_db.FloatingIP)
+    @resource_registry.tracked_resources(router=ROUTER,
+                                         floatingip=FLOATING_IP)
     def __init__(self):
         super(GceRouterPlugin, self).__init__()
         l3_db.subscribe()
@@ -65,7 +78,7 @@ class GceRouterPlugin(
                  (self.gce_project, self.gce_region))
 
     def get_plugin_type(self):
-        return constants.L3_ROUTER_NAT
+        return PLUGIN_TYPE
 
     def get_plugin_description(self):
         """returns string description of the plugin."""
