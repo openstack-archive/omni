@@ -1,0 +1,28 @@
+# Common variables
+CAPACITY=${CAPACITY:-2048}
+ENABLE_FORCE_UPLOAD=${ENABLE_FORCE_UPLOAD:-true}
+VOLUME_DIR=${VOLUME_DIR:-/etc/cinder/volumes}
+CINDER_USER=${CINDER_USER:-cinder}
+COMPUTE_EXTENSION=${COMPUTE_EXTENSION:-nova.api.openstack.compute.contrib.standard_extensions}
+CORE_PLUGIN=${CORE_PLUGIN:-ml2}
+ML2_DRIVERS=${ML2_DRIVERS:-local,flat}
+ML2_TENANT=${ML2_TENANT:-local}
+ML2_VLAN_TYPE=${ML2_VLAN_TYPE:-external}
+
+# GCE specific variables
+SERVICE_KEY_PATH=${SERVICE_KEY_PATH:-/etc/omni.json}
+ZONE=${ZONE:-us-central1-c}
+PROJECT=${PROJECT:-omni-163105}
+REGION=${REGION:-us-central1}
+GCE_CINDER_DRIVER=${GCE_CINDER_DRIVER:-cinder.volume.drivers.gce.driver.GceDriver}
+GCE_COMPUTE_DRIVER=${GCE_COMPUTE_DRIVER:-gce.GCEDriver}
+GCE_SERVICE_PLUGIN=${GCE_SERVICE_PLUGIN:-neutron.services.l3_router.gce_router_plugin.GceRouterPlugin}
+
+# AWS specific variables
+SECRET_KEY=${SECRET_KEY:-}
+ACCESS_KEY=${ACCESS_KEY:-}
+REGION_NAME=${REGION_NAME:-us-east-2}
+AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-us-east-2a}
+AWS_CINDER_DRIVER=${AWS_CINDER_DRIVER:-cinder.volume.drivers.aws.ebs.EBSDriver}
+AWS_COMPUTE_DRIVER=${AWS_COMPUTE_DRIVER:-ec2.EC2Driver}
+AWS_SERVICE_PLUGIN=${AWS_SERVICE_PLUGIN:-neutron.services.l3_router.aws_router_plugin.AwsRouterPlugin}
