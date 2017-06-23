@@ -20,10 +20,6 @@ case $key in
     -wj) JENKINSRUN=false;;
 esac
 
-if [ -d "$DIRECTORY" ]; then
-    rm -rf $DIRECTORY
-fi
-
 if [ "$JENKINSRUN" = true ]; then
     export OMNI_DIR="$BASE/new/omni"
     sudo chown -R jenkins:stack $OMNI_DIR
@@ -31,19 +27,12 @@ if [ "$JENKINSRUN" = true ]; then
 fi
 
 WORKSPACE=$(pwd)
-DIRECTORY="$WORKSPACE/omnitests"
+DIRECTORY="$WORKSPACE/openstack"
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
 declare -A results
 declare -i fail
 declare -i pass
-
-mkdir $DIRECTORY
-
-clone_repos() {
-    project=$1
-    git clone -b stable/newton --depth 1 https://github.com/openstack/$project.git $DIRECTORY/$project
-}
 
 copy_cinder_files() {
     cp -R $WORKSPACE/cinder/tests/unit/volume/drivers/ $DIRECTORY/cinder/cinder/tests/unit/volume/
@@ -91,13 +80,6 @@ check_results() {
         results+=( ["$project"]="UNKNOWN" )
     fi
 }
-
-echo "============Cloning repos============"
-clone_repos cinder &
-clone_repos nova &
-clone_repos glance_store &
-clone_repos neutron &
-wait
 
 copy_cinder_files
 copy_nova_files
