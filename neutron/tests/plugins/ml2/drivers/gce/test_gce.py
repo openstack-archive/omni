@@ -135,7 +135,7 @@ class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         sg_rule = self.get_fake_sg_rule()
         gce_rule = self._driver._convert_secgrp_rule_to_gce(
             sg_rule, NETWORK_LINK)
-        self.assertTrue(isinstance(gce_rule, dict))
+        self.assertIsInstance(gce_rule, dict)
 
     @mock.patch('neutron.common.gceutils.wait_for_operation')
     @mock.patch('neutron.common.gceutils.create_firewall_rule')
