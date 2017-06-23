@@ -18,11 +18,12 @@ from googleapiclient.discovery import build
 from oauth2client.client import GoogleCredentials
 from oslo_log import log as logging
 
-from cinder.i18n import _LI, _
+from cinder.i18n import _translators, _
 from oslo_service import loopingcall
 from oslo_utils import reflection
 
 LOG = logging.getLogger(__name__)
+_LI = _translators.log_info
 
 
 class GceOperationError(Exception):

@@ -14,12 +14,13 @@
 
 from oslo_log import log as logging
 
-from cinder.i18n import _LI
+from cinder.i18n import _translators
 from cinder.volume.driver import BaseVD
 from cinder.volume.drivers.gce import gceconf
 from cinder.volume.drivers.gce import gceutils
 
 LOG = logging.getLogger(__name__)
+_LI = _translators.log_info
 
 
 class GceDriver(BaseVD):
