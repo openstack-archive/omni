@@ -49,15 +49,14 @@ class GCEGlanceTestCase(base.StoreBaseTest):
         location = Location("gce", StoreLocation, cfg.CONF,
                             store_specs=store_specs)
         size = self.store.get_size(location)
-        self.assertTrue(isinstance(size, int))
+        self.assertIsInstance(size, int)
         self.assertEqual(size, 10 * units.Gi)
 
     def test_store_location_initialization(self):
         location.SCHEME_TO_CLS_MAP["gce"] = {}
         location.SCHEME_TO_CLS_MAP['gce']['location_class'] = StoreLocation
         uri = "gce://%s/fake_gce_id/fake_glance_id" % (self.store.gce_project)
-        self.assertTrue(
-            isinstance(location.get_location_from_uri(uri), Location))
+        self.assertIsInstance(location.get_location_from_uri(uri), Location)
 
     def test_store_location_initialization_with_invalid_url(self):
         location.SCHEME_TO_CLS_MAP["scheme"] = {}
