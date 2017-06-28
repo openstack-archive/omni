@@ -18,7 +18,6 @@ from oslo_service import loopingcall
 from oslo_log import log as logging
 from oslo_config import cfg
 
-from cinder.i18n import _LE
 from cinder.exception import VolumeNotFound, NotFound, APITimeout, InvalidConfigurationValue
 from cinder.volume.driver import BaseVD
 
@@ -135,7 +134,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_vol = self._find(volume['id'], self._conn.get_all_volumes)
         except NotFound:
-            LOG.error(_LE('Volume %s was not found'), volume['id'])
+            LOG.error('Volume %s was not found', volume['id'])
             return
         self._conn.delete_volume(ebs_vol.id)
 
@@ -209,7 +208,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
         except NotFound:
-            LOG.error(_LE('Snapshot %s was not found'), snapshot['id'])
+            LOG.error('Snapshot %s was not found', snapshot['id'])
             return
         self._conn.delete_snapshot(ebs_ss.id)
 
@@ -217,7 +216,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
         except NotFound:
-            LOG.error(_LE('Snapshot %s was not found'), snapshot['id'])
+            LOG.error('Snapshot %s was not found', snapshot['id'])
             raise
         ebs_vol = ebs_ss.create_volume(self._zone)
 

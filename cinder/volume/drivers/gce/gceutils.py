@@ -18,7 +18,7 @@ from googleapiclient.discovery import build
 from oauth2client.client import GoogleCredentials
 from oslo_log import log as logging
 
-from cinder.i18n import _LI, _
+from cinder.i18n import _
 from oslo_service import loopingcall
 from oslo_utils import reflection
 
@@ -82,8 +82,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     def watch_operation(name, request):
         result = request.execute()
         if result['status'] == 'DONE':
-            LOG.info(
-                _LI("Operation %s status is %s") % (name, result['status']))
+            LOG.info("Operation %s status is %s", (name, result['status']))
             if 'error' in result:
                 raise GceOperationError(result['error'])
             raise loopingcall.LoopingCallDone()

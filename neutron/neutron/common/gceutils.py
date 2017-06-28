@@ -22,7 +22,7 @@ from oslo_log import log as logging
 from oslo_utils import reflection
 
 from neutron_lib import exceptions as e
-from neutron._i18n import _LI, _
+from neutron._i18n import _
 from oslo_service import loopingcall
 from six.moves import urllib
 
@@ -118,8 +118,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     def watch_operation(name, request):
         result = request.execute()
         if result['status'] == 'DONE':
-            LOG.info(
-                _LI("Operation %s status is %s") % (name, result['status']))
+            LOG.info("Operation %s status is %s", (name, result['status']))
             if 'error' in result:
                 raise GceOperationError(result['error'])
             raise loopingcall.LoopingCallDone()
@@ -330,9 +329,8 @@ def assign_floatingip(compute, project, zone, fixedip, floatingip):
         raise GceResourceNotFound(name='Instance with fixed IP',
                                   identifier=fixedip)
 
-    LOG.info(
-        _LI('Assigning floating ip %s to instance %s') % (floatingip,
-                                                          instance_name))
+    LOG.info('Assigning floating ip %s to instance %s',
+             (floatingip, instance_name))
 
     operation = compute.instances().addAccessConfig(
         project=project, zone=zone, instance=instance_name,
@@ -358,9 +356,8 @@ def release_floatingip(compute, project, zone, floatingip):
 
         items = urllib.parse.urlparse(user).path.strip('/').split('/')
         if len(items) < 4 or items[-2] != 'instances':
-            LOG.warning(
-                _LI('Unknown referrer %s to GCE static IP %s') % (user,
-                                                                  floatingip))
+            LOG.warning('Unknown referrer %s to GCE static IP %s',
+                        (user, floatingip))
             continue
 
         instance, zone = items[-1], items[-3]
@@ -368,9 +365,8 @@ def release_floatingip(compute, project, zone, floatingip):
         for interface in instance_info['networkInterfaces']:
             for accessconfig in interface.get('accessConfigs', []):
                 if accessconfig.get('natIP') == floatingip:
-                    LOG.info(
-                        _LI('Releasing %s from instance %s') % (floatingip,
-                                                                instance))
+                    LOG.info('Releasing %s from instance %s',
+                             (floatingip, instance))
                     operation = compute.instances().deleteAccessConfig(
                         project=project, zone=zone, instance=instance,
                         accessConfig=accessconfig['name'],
