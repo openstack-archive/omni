@@ -20,7 +20,6 @@ import time
 import nova.conf
 from nova import exception
 from nova.image import glance
-from nova.i18n import _LI
 from nova.virt import driver, hardware
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -119,9 +118,8 @@ class GCEDriver(driver.ComputeDriver):
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
         self.gce_flavor_info = gceutils.get_machines_info(
             self.gce_svc, self.gce_project, self.gce_zone)
-        LOG.info(
-            _LI("GCE driver init with %s project, %s region") %
-            (self.gce_project, self.gce_zone))
+        LOG.info("GCE driver init with %s project, %s region",
+                 (self.gce_project, self.gce_zone))
         if '_GCE_NODES' not in globals():
             set_nodes([CONF.host])
 
@@ -233,9 +231,8 @@ class GCEDriver(driver.ComputeDriver):
         # GCE expects instance name in format "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?"
         # So we need to construct it for GCE from uuid
         gce_instance_name = 'inst-' + instance.uuid
-        LOG.info(
-            _LI("Creating instance %s as %s on GCE.") % (instance.display_name,
-                                                         gce_instance_name))
+        LOG.info("Creating instance %s as %s on GCE.",
+                 (instance.display_name, gce_instance_name))
         # Image Info
         image_link = instance.system_metadata['image_gce_link']
         # Flavor Info
@@ -294,7 +291,7 @@ class GCEDriver(driver.ComputeDriver):
 
         try:
             gce_id = self._get_gce_id_from_instance(instance)
-            LOG.info(_LI("Taking snapshot of instance %s") % instance.uuid)
+            LOG.info("Taking snapshot of instance %s", instance.uuid)
             try:
                 boot_disk = gceutils.get_instance_boot_disk(
                     compute, project, zone, gce_id)
@@ -302,29 +299,26 @@ class GCEDriver(driver.ComputeDriver):
                 reason = "Unable to find boot disk from instance metadata %s" % instance.uuid
                 raise exception.InvalidMetadata(reason=reason)
             disk_name = boot_disk['name']
-            LOG.debug(
-                _LI("1. Found boot disk %s for instance %s") % (disk_name,
-                                                                instance.uuid))
+            LOG.debug("1. Found boot disk %s for instance %s",
+                      (disk_name, instance.uuid))
 
             operation = gceutils.stop_instance(compute, project, zone, gce_id)
             gceutils.wait_for_operation(compute, project, operation)
             instance_stopped = True
-            LOG.debug(
-                _LI("2. Temporarily stopped instance %s") % instance.uuid)
+            LOG.debug("2. Temporarily stopped instance %s", instance.uuid)
 
             snapshot_name = 'novasnap-' + disk_name + time.strftime("%s")
             operation = gceutils.snapshot_disk(
                 compute, project, zone, boot_disk['name'], snapshot_name)
             gceutils.wait_for_operation(compute, project, operation)
             temp_disk_snapshot = True
-            LOG.debug(_LI("3. Created boot disk snapshot %s") % snapshot_name)
+            LOG.debug("3. Created boot disk snapshot %s", snapshot_name)
 
             operation = gceutils.start_instance(compute, project, zone, gce_id)
             gceutils.wait_for_operation(compute, project, operation)
             instance_stopped = False
-            LOG.debug(
-                _LI("4. Restart instance after disk snapshot %s") %
-                instance.uuid)
+            LOG.debug("4. Restart instance after disk snapshot %s",
+                      instance.uuid)
 
             snapshot_disk_name = 'vol-' + snapshot_name
             operation = gceutils.create_disk_from_snapshot(
@@ -333,9 +327,8 @@ class GCEDriver(driver.ComputeDriver):
             snapshot_disk_info = gceutils.get_disk(compute, project, zone,
                                                    snapshot_disk_name)
             temp_disk_from_snapshot = True
-            LOG.debug(
-                _LI("5. Created disk %s from snapshot %s") %
-                (snapshot_disk_name, snapshot_name))
+            LOG.debug("5. Created disk %s from snapshot %s",
+                      (snapshot_disk_name, snapshot_name))
 
             update_task_state(task_state=task_states.IMAGE_PENDING_UPLOAD)
             image_api = glance.get_default_image_service()
@@ -346,12 +339,10 @@ class GCEDriver(driver.ComputeDriver):
             gceutils.wait_for_operation(compute, project, operation,
                                         timeout=120)
             image_created = True
-            LOG.debug(
-                _LI("6. Created image %s from disk %s") % (name,
-                                                           snapshot_disk_name))
-            LOG.info(
-                _LI("Created GCE image %s from instance %s") % (name,
-                                                                instance.uuid))
+            LOG.debug("6. Created image %s from disk %s",
+                      (name, snapshot_disk_name))
+            LOG.info("Created GCE image %s from instance %s",
+                     (name, instance.uuid))
 
             update_task_state(task_state=task_states.IMAGE_UPLOADING,
                               expected_state=task_states.IMAGE_PENDING_UPLOAD)
@@ -373,7 +364,7 @@ class GCEDriver(driver.ComputeDriver):
                 },
             }
             image_api.update(context, image_id, image_metadata)
-            LOG.debug(_LI("7. Added image to glance %s") % name)
+            LOG.debug("7. Added image to glance %s", name)
 
             disk_operation = gceutils.delete_disk(compute, project, zone,
                                                   snapshot_disk_name)
@@ -381,13 +372,12 @@ class GCEDriver(driver.ComputeDriver):
                                                       snapshot_name)
             gceutils.wait_for_operation(compute, project, disk_operation)
             temp_disk_from_snapshot = False
-            LOG.debug(_LI("8. Delete temporary disk %s") % snapshot_disk_name)
+            LOG.debug("8. Delete temporary disk %s", snapshot_disk_name)
 
             gceutils.wait_for_operation(compute, project, snap_operation)
             temp_disk_snapshot = False
-            LOG.debug(
-                _LI("9. Delete temporary disk snapshot %s") % snapshot_name)
-            LOG.info(_LI("Completed snapshot for instance %s") % instance.uuid)
+            LOG.debug("9. Delete temporary disk snapshot %s", snapshot_name)
+            LOG.info("Completed snapshot for instance %s", instance.uuid)
 
         except Exception as e:
             LOG.exception("An error occured during image creation: %s" % e)
@@ -395,29 +385,25 @@ class GCEDriver(driver.ComputeDriver):
                 operation = gceutils.start_instance(compute, project, zone,
                                                     gce_id)
                 gceutils.wait_for_operation(compute, project, operation)
-                LOG.debug(
-                    _LI("Restart instance after disk snapshot %s") %
-                    instance.uuid)
+                LOG.debug("Restart instance after disk snapshot %s",
+                          instance.uuid)
             if image_created:
-                LOG.info(
-                    _LI("Rollback snapshot for instance %s, deleting image %s from GCE"
-                        ) % (instance.uuid, name))
+                LOG.info("Rollback snapshot for instance %s, deleting image "
+                         "%s from GCE", (instance.uuid, name))
                 operation = gceutils.delete_image(compute, project, name)
                 gceutils.wait_for_operation(compute, project, operation)
             if temp_disk_from_snapshot:
                 disk_operation = gceutils.delete_disk(compute, project, zone,
                                                       snapshot_disk_name)
                 gceutils.wait_for_operation(compute, project, disk_operation)
-                LOG.debug(
-                    _LI("Rollback snapshot for instace %s, delete temporary disk %s"
-                        ) % (instance.uuid, snapshot_disk_name))
+                LOG.debug("Rollback snapshot for instace %s, delete temporary"
+                          " disk %s", (instance.uuid, snapshot_disk_name))
             if temp_disk_snapshot:
                 snap_operation = gceutils.delete_snapshot(
                     compute, project, snapshot_name)
                 gceutils.wait_for_operation(compute, project, snap_operation)
-                LOG.debug(
-                    _LI("Rollback snapshot for instance %s, delete temporary disk snapshot %s"
-                        ) % (instance.uuid, snapshot_name))
+                LOG.debug("Rollback snapshot for instance %s, delete temporary"
+                          " disk snapshot %s", (instance.uuid, snapshot_name))
             raise e
 
     def reboot(self, context, instance, network_info, reboot_type,
@@ -449,22 +435,22 @@ class GCEDriver(driver.ComputeDriver):
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info(_LI('Stopping instance %s') % instance.uuid)
+        LOG.info('Stopping instance %s', instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Starting instance %s') % instance.uuid)
+        LOG.info('Starting instance %s', instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Soft Reboot Complete for instance %s') % instance.uuid)
+        LOG.info('Soft Reboot Complete for instance %s', instance.uuid)
 
     def _hard_reboot(self, context, instance, network_info,
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info(_LI('Resetting instance %s') % instance.uuid)
+        LOG.info('Resetting instance %s', instance.uuid)
         operation = gceutils.reset_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Hard Reboot Complete %s') % instance.uuid)
+        LOG.info('Hard Reboot Complete %s', instance.uuid)
 
     @staticmethod
     def get_host_ip_addr():
@@ -516,23 +502,23 @@ class GCEDriver(driver.ComputeDriver):
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info(_LI('Stopping instance %s') % instance.uuid)
+        LOG.info('Stopping instance %s', instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Power off complete %s') % instance.uuid)
+        LOG.info('Power off complete %s', instance.uuid)
 
     def power_on(self, context, instance, network_info, block_device_info):
         """Power on the specified instance."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
-        LOG.info(_LI('Starting instance %s') % instance.uuid)
+        LOG.info('Starting instance %s', instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI("Power on Complete %s") % instance.uuid)
+        LOG.info("Power on Complete %s", instance.uuid)
 
     def soft_delete(self, instance):
         """Deleting the specified instance"""
-        LOG.info(_LI("Soft delete instance %s") % instance.uuid)
+        LOG.info("Soft delete instance %s", instance.uuid)
         self.destroy(instance)
 
     def restore(self, instance):
@@ -545,7 +531,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info(_LI("Pause instance %s") % instance.uuid)
+        LOG.info("Pause instance %s", instance.uuid)
         self.power_off(instance)
 
     def unpause(self, instance):
@@ -555,7 +541,7 @@ class GCEDriver(driver.ComputeDriver):
         instance. and powering on such an instance in this method.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info(_LI("Unpause instance %s") % instance.uuid)
+        LOG.info("Unpause instance %s", instance.uuid)
         self.power_on(context=None, instance=instance, network_info=None,
                       block_device_info=None)
 
@@ -566,7 +552,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info(_LI("Suspending instance %s") % instance.uuid)
+        LOG.info("Suspending instance %s", instance.uuid)
         self.power_off(instance)
 
     def resume(self, context, instance, network_info, block_device_info=None):
@@ -576,7 +562,7 @@ class GCEDriver(driver.ComputeDriver):
         instance.
         :param instance: nova.objects.instance.Instance
         """
-        LOG.info(_LI("Resuming instance %s") % instance.uuid)
+        LOG.info("Resuming instance %s", instance.uuid)
         self.power_on(context, instance, network_info, block_device_info)
 
     def destroy(self, context, instance, network_info, block_device_info=None,
@@ -597,13 +583,12 @@ class GCEDriver(driver.ComputeDriver):
         :param migrate_data: implementation specific params
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        LOG.info(_LI('Deleting instance %s') % instance.uuid)
+        LOG.info('Deleting instance %s', instance.uuid)
         try:
             gce_id = self._get_gce_id_from_instance(instance)
         except exception.InstanceNotFound:
-            LOG.error(
-                _LI("Unable to find GCE mapping for instance %s") %
-                instance.uuid)
+            LOG.error("Unable to find GCE mapping for instance %s",
+                      instance.uuid)
             return
         try:
             operation = gceutils.delete_instance(compute, project, zone,
@@ -611,12 +596,11 @@ class GCEDriver(driver.ComputeDriver):
         except HttpError:
             # Sometimes instance may not exist in GCE, in that case we just
             # allow deleting VM from openstack
-            LOG.error(
-                _LI("Instance %s not found in GCE, removing from openstack.") %
-                instance.uuid)
+            LOG.error("Instance %s not found in GCE, removing from openstack.",
+                      instance.uuid)
             return
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI("Destroy Complete %s") % instance.uuid)
+        LOG.info("Destroy Complete %s", instance.uuid)
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
                       disk_bus=None, device_type=None, encryption=None):
@@ -630,9 +614,8 @@ class GCEDriver(driver.ComputeDriver):
         operation = gceutils.attach_disk(compute, project, zone, gce_id,
                                          disk_name, disk_link)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(
-            _LI("Volume %s attached to instace %s") % (disk_name,
-                                                       instance.uuid))
+        LOG.info("Volume %s attached to instace %s",
+                 (disk_name, instance.uuid))
 
     def detach_volume(self, connection_info, instance, mountpoint,
                       encryption=None):
@@ -645,9 +628,8 @@ class GCEDriver(driver.ComputeDriver):
         operation = gceutils.detach_disk(compute, project, zone, gce_id,
                                          disk_name)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(
-            _LI("Volume %s detached from instace %s") % (disk_name,
-                                                         instance.uuid))
+        LOG.info("Volume %s detached from instace %s",
+                 (disk_name, instance.uuid))
 
     def swap_volume(self, old_connection_info, new_connection_info, instance,
                     mountpoint, resize_to):

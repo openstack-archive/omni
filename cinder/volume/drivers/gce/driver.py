@@ -14,13 +14,11 @@
 
 from oslo_log import log as logging
 
-from cinder.i18n import _translators
 from cinder.volume.driver import BaseVD
 from cinder.volume.drivers.gce import gceconf
 from cinder.volume.drivers.gce import gceutils
 
 LOG = logging.getLogger(__name__)
-_LI = _translators.log_info
 
 
 class GceDriver(BaseVD):
@@ -35,9 +33,8 @@ class GceDriver(BaseVD):
     def do_setup(self, context):
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
         self.set_initialized()
-        LOG.info(
-            _LI("Gce volume driver init with %s project, %s zone") %
-            (self.gce_project, self.gce_zone))
+        LOG.info("Gce volume driver init with %s project, %s zone",
+                 (self.gce_project, self.gce_zone))
 
     def _gce_volume_name(self, volume):
         return 'vol-' + volume.id
