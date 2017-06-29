@@ -25,8 +25,12 @@ from neutron.common import gceconf
 from neutron.common import gceutils
 from neutron.manager import NeutronManager
 from neutron.plugins.ml2 import driver_api as api
-from neutron_lib import exceptions as e
 from neutron.extensions import securitygroup as sg
+from neutron_lib import exceptions as e
+try:
+    from neutron_lib.plugins import directory
+except ImportError:
+    pass
 
 LOG = log.getLogger(__name__)
 
@@ -216,7 +220,10 @@ class GceMechanismDriver(api.MechanismDriver):
         except gceutils.HttpError:
             return
 
-        core_plugin = NeutronManager.get_plugin()
+        try:
+            core_plugin = NeutronManager.get_plugin()
+        except AttributeError:
+            core_plugin = directory.get_plugin()
         rule = core_plugin.get_security_group_rule(context, rule_id)
 
         network_link = gce_firewall_info['network']
@@ -246,7 +253,10 @@ class GceMechanismDriver(api.MechanismDriver):
             pass
 
     def _create_secgrp_rules_if_needed(self, context, secgrp_ids):
-        core_plugin = NeutronManager.get_plugin()
+        try:
+            core_plugin = NeutronManager.get_plugin()
+        except AttributeError:
+            core_plugin = directory.get_plugin()
         secgrp_rules = []
         for secgrp_id in secgrp_ids:
             secgrp = core_plugin.get_security_group(context._plugin_context,
@@ -266,14 +276,20 @@ class GceMechanismDriver(api.MechanismDriver):
                                              network_link)
 
     def _update_secgrp(self, context, secgrp_id):
-        core_plugin = NeutronManager.get_plugin()
+        try:
+            core_plugin = NeutronManager.get_plugin()
+        except AttributeError:
+            core_plugin = directory.get_plugin()
         secgrp = core_plugin.get_security_group(context, secgrp_id)
         secgrp_rules = secgrp['security_group_rules']
         for secgrp_rule in secgrp_rules:
             self._update_secgrp_rule(context, secgrp_rule['id'])
 
     def _delete_secgrp(self, context, secgrp_id):
-        core_plugin = NeutronManager.get_plugin()
+        try:
+            core_plugin = NeutronManager.get_plugin()
+        except AttributeError:
+            core_plugin = directory.get_plugin()
         secgrp = core_plugin.get_security_group(context, secgrp_id)
         secgrp_rules = secgrp['security_group_rules']
         for secgrp_rule in secgrp_rules:

@@ -18,6 +18,7 @@ import mock
 from neutron.tests import base
 from neutron.plugins.ml2.drivers.gce.mech_gce import GceMechanismDriver
 from neutron.plugins.ml2.drivers.gce.mech_gce import SecurityGroupInvalidDirection
+from neutron.manager import NeutronManager
 from neutron.tests.common.gce import gce_mock
 from neutron.tests.common.gce.gce_mock import FakeNeutronManager
 from neutron.tests.unit.extensions import test_securitygroup as test_sg
@@ -26,6 +27,11 @@ from neutron_lib import constants as const
 
 DATA_DIR = os.path.dirname(os.path.abspath("gce_mock.py")) + '/data'
 NETWORK_LINK = "projects/omni-163105/global/networks/net-03c4f178-670e-4805-a511-9470ca4a0b06"
+
+if hasattr(NeutronManager, "get_plugin"):
+    neutron_get_plugin = 'neutron.manager.NeutronManager.get_plugin'
+else:
+    neutron_get_plugin = 'neutron_lib.plugins.directory.get_plugin'
 
 
 class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
@@ -144,7 +150,7 @@ class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
                                           self._driver.gce_project,
                                           gce_mock.fake_operation())
 
-    @mock.patch('neutron.manager.NeutronManager.get_plugin')
+    @mock.patch(neutron_get_plugin)
     @mock.patch('neutron.common.gceutils.wait_for_operation')
     @mock.patch('neutron.common.gceutils.update_firewall_rule')
     @mock.patch('neutron.common.gceutils.get_firewall_rule')
