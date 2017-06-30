@@ -1,0 +1,21 @@
+py27 create: /home/stack/openstack/omni/.tox/py27
+py27 develop-inst: /home/stack/openstack/omni
+ERROR: invocation failed (exit code 1), logfile: /home/stack/openstack/omni/.tox/py27/log/py27-2.log
+ERROR: actionid: py27
+msg: developpkg
+cmdargs: ['/home/stack/openstack/omni/.tox/py27/bin/pip', 'install', '-e', '/home/stack/openstack/omni']
+env: {'VIRTUAL_ENV': '/home/stack/openstack/omni/.tox/py27', 'SHLVL': '1', 'LANG': 'en_US.UTF-8', 'PATH': '/home/stack/openstack/omni/.tox/py27/bin:/home/stack/openstack/omni/.tox/py27/bin:/home/stack/bin:/home/stack/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin', 'PWD': '/home/stack/openstack/omni', 'PYTHONHASHSEED': '908394477', '_': '/usr/local/bin/tox', 'LANGUAGE': 'en_US'}
+
+Obtaining file:///home/stack/openstack/omni
+Collecting google-api-python-client>=1.4.2 (from omni==0.0.1.dev35)
+  Retrying (Retry(total=4, connect=None, read=None, redirect=None)) after connection broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.connection.VerifiedHTTPSConnection object at 0x7f2bf53d6210>: Failed to establish a new connection: [Errno -5] No address associated with hostname',)': /simple/google-api-python-client/
+  Retrying (Retry(total=3, connect=None, read=None, redirect=None)) after connection broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.connection.VerifiedHTTPSConnection object at 0x7f2bf53d6310>: Failed to establish a new connection: [Errno -5] No address associated with hostname',)': /simple/google-api-python-client/
+  Retrying (Retry(total=2, connect=None, read=None, redirect=None)) after connection broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.connection.VerifiedHTTPSConnection object at 0x7f2bf53d6710>: Failed to establish a new connection: [Errno -5] No address associated with hostname',)': /simple/google-api-python-client/
+  Retrying (Retry(total=1, connect=None, read=None, redirect=None)) after connection broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.connection.VerifiedHTTPSConnection object at 0x7f2bf53d6c10>: Failed to establish a new connection: [Errno -5] No address associated with hostname',)': /simple/google-api-python-client/
+  Retrying (Retry(total=0, connect=None, read=None, redirect=None)) after connection broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.connection.VerifiedHTTPSConnection object at 0x7f2bf53d6f10>: Failed to establish a new connection: [Errno -5] No address associated with hostname',)': /simple/google-api-python-client/
+  Could not find a version that satisfies the requirement google-api-python-client>=1.4.2 (from omni==0.0.1.dev35) (from versions: )
+No matching distribution found for google-api-python-client>=1.4.2 (from omni==0.0.1.dev35)
+
+py27 installed: 
+___________________________________ summary ____________________________________
+ERROR:   py27: InvocationError: /home/stack/openstack/omni/.tox/py27/bin/pip install -e /home/stack/openstack/omni (see /home/stack/openstack/omni/.tox/py27/log/py27-2.log)

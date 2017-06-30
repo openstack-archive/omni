@@ -1,0 +1,25 @@
+py27 create: /home/stack/openstack/omni/.tox/py27
+ERROR: invocation failed (exit code 1), logfile: /home/stack/openstack/omni/.tox/py27/log/py27-0.log
+ERROR: actionid: py27
+msg: getenv
+cmdargs: ['/usr/bin/python', '-m', 'virtualenv', '--python', '/usr/bin/python2.7', 'py27']
+env: {'VIRTUAL_ENV': '/home/stack/openstack/omni/.tox/py27', 'SHLVL': '1', 'LANG': 'en_US.UTF-8', 'PATH': '/home/stack/openstack/omni/.tox/py27/bin:/home/stack/openstack/omni/.tox/py27/bin:/home/stack/bin:/home/stack/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin', 'PWD': '/home/stack/openstack/omni', 'PYTHONHASHSEED': '756525180', '_': '/usr/local/bin/tox', 'LANGUAGE': 'en_US'}
+
+New python executable in /home/stack/openstack/omni/.tox/py27/bin/python2.7
+Traceback (most recent call last):
+  File "/usr/local/lib/python2.7/dist-packages/virtualenv.py", line 2328, in <module>
+    main()
+  File "/usr/local/lib/python2.7/dist-packages/virtualenv.py", line 713, in main
+    symlink=options.symlink)
+  File "/usr/local/lib/python2.7/dist-packages/virtualenv.py", line 925, in create_environment
+    site_packages=site_packages, clear=clear, symlink=symlink))
+  File "/usr/local/lib/python2.7/dist-packages/virtualenv.py", line 1231, in install_python
+    shutil.copyfile(executable, py_executable)
+  File "/usr/lib/python2.7/shutil.py", line 83, in copyfile
+    with open(dst, 'wb') as fdst:
+IOError: [Errno 26] Text file busy: '/home/stack/openstack/omni/.tox/py27/bin/python2.7'
+Running virtualenv with interpreter /usr/bin/python2.7
+
+ERROR: InvocationError: /usr/bin/python -m virtualenv --python /usr/bin/python2.7 py27 (see /home/stack/openstack/omni/.tox/py27/log/py27-0.log)
+___________________________________ summary ____________________________________
+ERROR:   py27: InvocationError: /usr/bin/python -m virtualenv --python /usr/bin/python2.7 py27 (see /home/stack/openstack/omni/.tox/py27/log/py27-0.log)

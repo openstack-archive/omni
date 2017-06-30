@@ -17,7 +17,7 @@ import random
 from oslo_log import log
 
 import ipaddr
-from neutron._i18n import _LI, _
+from neutron._i18n import _
 from neutron.callbacks import events
 from neutron.callbacks import registry
 from neutron.callbacks import resources
@@ -52,9 +52,8 @@ class GceMechanismDriver(api.MechanismDriver):
 
     def initialize(self):
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
-        LOG.info(
-            _LI("GCE Mechanism driver init with %s project, %s region") %
-            (self.gce_project, self.gce_region))
+        LOG.info("GCE Mechanism driver init with %s project, %s region",
+                 (self.gce_project, self.gce_region))
         self._subscribe_events()
 
     def _subscribe_events(self):
@@ -89,7 +88,7 @@ class GceMechanismDriver(api.MechanismDriver):
         name = self._gce_network_name(context)
         operation = gceutils.create_network(compute, project, name)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Created network on GCE %s') % name)
+        LOG.info('Created network on GCE %s', name)
 
     def update_network_precommit(self, context):
         pass
@@ -105,7 +104,7 @@ class GceMechanismDriver(api.MechanismDriver):
         name = self._gce_network_name(context)
         operation = gceutils.delete_network(compute, project, name)
         gceutils.wait_for_operation(compute, project, operation)
-        LOG.info(_LI('Deleted network on GCE %s') % name)
+        LOG.info('Deleted network on GCE %s', name)
 
     def create_subnet_precommit(self, context):
         pass
@@ -121,8 +120,7 @@ class GceMechanismDriver(api.MechanismDriver):
             operation = gceutils.create_subnet(compute, project, region, name,
                                                cidr, network_link)
             gceutils.wait_for_operation(compute, project, operation)
-            LOG.info(
-                _LI("Created subnet %s in region %s on GCE") % (name, region))
+            LOG.info("Created subnet %s in region %s on GCE", (name, region))
 
     def update_subnet_precommit(self, context):
         pass
@@ -140,8 +138,7 @@ class GceMechanismDriver(api.MechanismDriver):
             name = self._gce_subnet_name(context)
             operation = gceutils.delete_subnet(compute, project, region, name)
             gceutils.wait_for_operation(compute, project, operation)
-            LOG.info(
-                _LI("Deleted subnet %s in region %s on GCE") % (name, region))
+            LOG.info("Deleted subnet %s in region %s on GCE",(name, region))
 
     def _gce_secgrp_id(self, openstack_id):
         return "secgrp-" + openstack_id
@@ -207,7 +204,7 @@ class GceMechanismDriver(api.MechanismDriver):
             LOG.exception(
                 "An error occured while creating security group: %s" % e)
             return
-        LOG.info(_LI("Create GCE firewall rule %s") % gce_rule)
+        LOG.info("Create GCE firewall rule %s", gce_rule)
         operation = gceutils.create_firewall_rule(compute, project, gce_rule)
         gceutils.wait_for_operation(compute, project, operation)
 
@@ -229,14 +226,14 @@ class GceMechanismDriver(api.MechanismDriver):
         network_link = gce_firewall_info['network']
         try:
             gce_rule = self._convert_secgrp_rule_to_gce(rule, network_link)
-            LOG.info(_LI("Update GCE firewall rule %s") % name)
+            LOG.info("Update GCE firewall rule %s", name)
             operation = gceutils.update_firewall_rule(compute, project, name,
                                                       gce_rule)
             gceutils.wait_for_operation(compute, project, operation)
         except Exception as e:
-            LOG.exception(
-                _LI("An error occured while updating security group: %s") % e)
-            LOG.error(_LI("Deleting existing GCE firewall rule %s") % name)
+            LOG.exception("An error occurred while updating security "
+                          "group: %s", e)
+            LOG.error("Deleting existing GCE firewall rule %s", name)
             operation = gceutils.delete_firewall_rule(compute, project, name)
             gceutils.wait_for_operation(compute, project, operation)
 
@@ -244,9 +241,8 @@ class GceMechanismDriver(api.MechanismDriver):
         name = self._gce_secgrp_id(rule_id)
         compute, project = self.gce_svc, self.gce_project
         try:
-            LOG.warn(
-                _LI("Delete existing GCE firewall rule %s,"
-                    "as firewall rule update not GCE compatible.") % name)
+            LOG.warn("Delete existing GCE firewall rule %s,"
+                     "as firewall rule update not GCE compatible.", name)
             operation = gceutils.delete_firewall_rule(compute, project, name)
             gceutils.wait_for_operation(compute, project, operation)
         except gceutils.HttpError:
@@ -325,5 +321,4 @@ class GceMechanismDriver(api.MechanismDriver):
                 if security_group_id:
                     self._delete_secgrp(context, security_group_id)
                 else:
-                    LOG.warn(
-                        _LI("Security group ID not found in delete request"))
+                    LOG.warn("Security group ID not found in delete request")

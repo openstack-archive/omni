@@ -22,7 +22,7 @@ from ConfigParser import ConfigParser
 
 from glance_store import capabilities
 from glance_store import exceptions
-from glance_store.i18n import _, _LE
+from glance_store.i18n import _
 import glance_store.driver
 import glance_store.location
 
