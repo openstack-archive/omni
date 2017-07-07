@@ -12,6 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import neutron_lib
+from distutils.version import LooseVersion
 from oslo_log import log as logging
 
 from neutron.common import exceptions
@@ -30,6 +32,18 @@ from neutron.services import service_base
 from neutron_lib import constants as n_const
 
 LOG = logging.getLogger(__name__)
+
+if LooseVersion(neutron_lib.__version__) < LooseVersion("1.0.0"):
+    router = l3_db.Router
+    floating_ip = l3_db.FloatingIP
+    plugin_type = constants.L3_ROUTER_NAT
+else:
+    from neutron.db.models import l3
+    from neutron_lib.plugins import constants as plugin_constants
+    from neutron_lib.services import base as service_base
+    router = l3.Router
+    floating_ip = l3.FloatingIP
+    plugin_type = plugin_constants.L3
 
 
 class GceRouterPlugin(
@@ -51,8 +65,8 @@ class GceRouterPlugin(
         "l3-ha"
     ]
 
-    @resource_registry.tracked_resources(router=l3_db.Router,
-                                         floatingip=l3_db.FloatingIP)
+    @resource_registry.tracked_resources(router=router,
+                                         floatingip=floating_ip)
     def __init__(self):
         super(GceRouterPlugin, self).__init__()
         l3_db.subscribe()
@@ -65,7 +79,7 @@ class GceRouterPlugin(
                  (self.gce_project, self.gce_region))
 
     def get_plugin_type(self):
-        return constants.L3_ROUTER_NAT
+        return plugin_type
 
     def get_plugin_description(self):
         """returns string description of the plugin."""
