@@ -53,7 +53,7 @@ class GCENovaTestCase(test.TestCase):
         mock_get_metadata.side_effect = gce_mock.get_instances_metadata_key
         instances_list = self._driver.list_instances()
         self.assertTrue(isinstance(instances_list, list))
-        self.assertEqual(instances_list, ["instance-1", "instance-2"])
+        self.assertEqual(["instance-1", "instance-2"], instances_list)
 
     @mock.patch('nova.virt.gce.driver.gceutils.get_instances_metadata_key')
     @mock.patch('nova.virt.gce.driver.gceutils.list_instances')
@@ -62,7 +62,7 @@ class GCENovaTestCase(test.TestCase):
         mock_get_metadata.side_effect = gce_mock.get_instances_metadata_key
         instances_list = self._driver.list_instance_uuids()
         self.assertTrue(isinstance(instances_list, list))
-        self.assertEqual(len(instances_list), 2)
+        self.assertEqual(2, len(instances_list)
 
     @mock.patch('nova.virt.gce.driver.gceutils.set_instance_metadata')
     @mock.patch('nova.virt.gce.driver.gceutils.get_instance')

@@ -50,7 +50,7 @@ class GCEGlanceTestCase(base.StoreBaseTest):
                             store_specs=store_specs)
         size = self.store.get_size(location)
         self.assertTrue(isinstance(size, int))
-        self.assertEqual(size, 10 * units.Gi)
+        self.assertEqual(10 * units.Gi, size)
 
     def test_store_location_initialization(self):
         location.SCHEME_TO_CLS_MAP["gce"] = {}

@@ -34,6 +34,7 @@ import boto
 import contextlib
 import mock
 
+
 class EC2DriverTestCase(test.NoDBTestCase):
 
     @mock_ec2
@@ -70,7 +71,8 @@ class EC2DriverTestCase(test.NoDBTestCase):
     def reset(self):
         instance_list = self.conn.ec2_conn.get_only_instances()
         # terminated instances are considered deleted and hence ignore them
-        instance_id_list = [x.id for x in instance_list if x.state != 'terminated']
+        instance_id_list = [x.id for x in instance_list if x.state !=
+                            'terminated']
         self.conn.ec2_conn.stop_instances(instance_ids=instance_id_list,
                                           force=True)
         self.conn.ec2_conn.terminate_instances(instance_ids=instance_id_list)
@@ -158,11 +160,11 @@ class EC2DriverTestCase(test.NoDBTestCase):
             }
         ]
         aws_subnet_id, aws_fixed_ip, port_id, network_id = \
-                self.conn._process_network_info(fake_network_info)
-        self.assertEqual(aws_subnet_id, 'subnet-0107db5a')
-        self.assertEqual(aws_fixed_ip, '192.168.100.5')
-        self.assertEqual(port_id, 'a9a90cf6-627c-46f3-829d-c5a2ae07aaf0')
-        self.assertEqual(network_id, '4f8ad58d-de60-4b52-94ba-8b988a9b7f33')
+            self.conn._process_network_info(fake_network_info)
+        self.assertEqual('subnet-0107db5a', aws_subnet_id)
+        self.assertEqual('192.168.100.5', aws_fixed_ip)
+        self.assertEqual('a9a90cf6-627c-46f3-829d-c5a2ae07aaf0', port_id)
+        self.assertEqual('4f8ad58d-de60-4b52-94ba-8b988a9b7f33', network_id)
 
     def _get_instance_flavor_details(self):
         return {
@@ -229,15 +231,15 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_secgrp.return_value = []
             self._create_nova_vm()
             fake_instances = self.fake_ec2_conn.get_only_instances()
-            self.assertEqual(len(fake_instances), 1)
+            self.assertEqual(1, len(fake_instances))
             inst = fake_instances[0]
             self.assertEqual(inst.vpc_id, self.vpc.id)
             self.assertEqual(self.subnet_id, inst.subnet_id)
-            self.assertEqual(inst.tags['Name'], 'fake_instance')
+            self.assertEqual('fake_instance', inst.tags['Name'])
             self.assertEqual(inst.tags['openstack_id'], self.uuid)
-            self.assertEqual(inst.image_id, 'ami-1234abc')
+            self.assertEqual('ami-1234abc', inst.img_id)
             self.assertEqual(inst.region.name, self.region_name)
-            self.assertEqual(inst.key_name, 'None')
+            self.assertEqual('None', inst.key_name)
             self.assertEqual(inst.instance_type, 't2.small')
         self.reset()
 
@@ -256,9 +258,9 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_secgrp.return_value = []
             self._create_nova_vm()
             fake_instances = self.fake_ec2_conn.get_only_instances()
-            self.assertEqual(len(fake_instances), 1)
+            self.assertEqual(1, len(fake_instances))
             inst = fake_instances[0]
-            self.assertEqual(inst.key_name, 'fake_key')
+            self.assertEqual('fake_key', inst.key_name)
         self.reset()
 
     @mock_ec2
@@ -283,10 +285,10 @@ class EC2DriverTestCase(test.NoDBTestCase):
                     'ami-1234abc')
             boto.ec2.EC2Connection.run_instances = mock.Mock()
             boto.ec2.EC2Connection.run_instances.return_value = \
-                    fake_run_instance_op
+                fake_run_instance_op
             self._create_nova_vm()
             fake_instances = self.fake_ec2_conn.get_only_instances()
-            self.assertEqual(len(fake_instances), 1)
+            self.assertEqual(1, len(fake_instances))
             boto.ec2.EC2Connection.run_instances.assert_called_once_with(
                     instance_type='t2.small', key_name=None,
                     image_id='ami-1234abc', user_data=userdata,
@@ -306,7 +308,8 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_image.return_value = 'ami-1234abc'
             mock_network.return_value = (None, None, None, None)
             mock_secgrp.return_value = []
-            self.assertRaises(exception.BuildAbortException, self._create_nova_vm)
+            self.assertRaises(exception.BuildAbortException,
+                              self._create_nova_vm)
         self.reset()
 
     @mock_ec2
@@ -321,7 +324,8 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_network.return_value = ('subnet-1234abc', '192.168.10.5',
                                          None, None)
             mock_secgrp.return_value = []
-            self.assertRaises(exception.BuildAbortException, self._create_nova_vm)
+            self.assertRaises(exception.BuildAbortException,
+                              self._create_nova_vm)
         self.reset()
 
     @mock_ec2
@@ -337,7 +341,8 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_network.return_value = ('subnet-1234abc', '192.168.10.5',
                                          None, None)
             mock_secgrp.return_value = []
-            self.assertRaises(exception.BuildAbortException, self._create_nova_vm)
+            self.assertRaises(exception.BuildAbortException,
+                              self._create_nova_vm)
         self.reset()
 
     @mock_ec2
@@ -369,12 +374,12 @@ class EC2DriverTestCase(test.NoDBTestCase):
                            func_call_matcher.call)
         self.assertIsNone(func_call_matcher.match())
         context, snapshot_name, metadata = \
-                GlanceImageService.update.call_args[0]
+            GlanceImageService.update.call_args[0]
         aws_imgs = self.fake_ec2_conn.get_all_images()
         self.assertEqual(1, len(aws_imgs))
         aws_img = aws_imgs[0]
-        self.assertEqual(snapshot_name, 'test-snapshot')
-        self.assertEqual(aws_img.name, 'test-snapshot')
+        self.assertEqual('test-snapshot', snapshot_name)
+        self.assertEqual('test-snapshot', aws_img.name)
         self.assertEqual(aws_img.id, metadata['properties']['ec2_image_id'])
         self.reset()
 
@@ -439,10 +444,10 @@ class EC2DriverTestCase(test.NoDBTestCase):
     def test_power_off(self):
         self._create_vm_in_aws_nova()
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
-        self.assertEqual(fake_inst.state, 'running')
+        self.assertEqual('running', fake_inst.state)
         self.conn.power_off(self.instance)
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
-        self.assertEqual(fake_inst.state, 'stopped')
+        self.assertEqual('stopped', fake_inst.state)
         self.reset()
 
     @mock_ec2
@@ -459,7 +464,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.fake_ec2_conn.stop_instances(instance_ids=[fake_inst.id])
         self.conn.power_on(self.context, self.instance, None, None)
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
-        self.assertEqual(fake_inst.state, 'running')
+        self.assertEqual('running', fake_inst.state)
         self.reset()
 
     @mock_ec2
@@ -521,7 +526,8 @@ class EC2DriverTestCase(test.NoDBTestCase):
         ) as (fake_stop, fake_terminate, fake_wait):
             self.conn.destroy(self.context, self.instance, None, None)
             fake_stop.assert_not_called()
-            fake_terminate.assert_called_once_with(instance_ids=[fake_instances[0].id])
+            fake_terminate.assert_called_once_with(
+                          instance_ids=[fake_instances[0].id])
         self.reset()
 
     @mock_ec2
