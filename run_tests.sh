@@ -20,12 +20,6 @@ case $key in
     -wj) JENKINSRUN=false;;
 esac
 
-if [ "$JENKINSRUN" = true ]; then
-    export OMNI_DIR="$BASE/new/omni"
-    sudo chown -R jenkins:stack $OMNI_DIR
-    cd $OMNI_DIR
-fi
-
 WORKSPACE=$(pwd)
 DIRECTORY="$WORKSPACE/openstack"
 GCE_TEST="test_gce"
@@ -87,8 +81,8 @@ copy_glance_files
 copy_neutron_files
 
 echo "============Running tests============"
-run_tests cinder "$GCE_TEST $AWS_TEST" &
-run_tests nova "$GCE_TEST $AWS_TEST" &
+run_tests cinder "$GCE_TEST" &
+run_tests nova "$GCE_TEST" &
 run_tests glance_store "$GCE_TEST" &
 run_tests neutron "$GCE_TEST" &
 wait
