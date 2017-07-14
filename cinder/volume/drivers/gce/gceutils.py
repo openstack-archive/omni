@@ -82,7 +82,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     def watch_operation(name, request):
         result = request.execute()
         if result['status'] == 'DONE':
-            LOG.info("Operation %s status is %s", (name, result['status']))
+            LOG.info("Operation %s status is %s" % (name, result['status']))
             if 'error' in result:
                 raise GceOperationError(result['error'])
             raise loopingcall.LoopingCallDone()

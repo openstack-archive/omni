@@ -134,7 +134,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_vol = self._find(volume['id'], self._conn.get_all_volumes)
         except NotFound:
-            LOG.error('Volume %s was not found', volume['id'])
+            LOG.error('Volume %s was not found' % volume['id'])
             return
         self._conn.delete_volume(ebs_vol.id)
 
@@ -208,7 +208,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
         except NotFound:
-            LOG.error('Snapshot %s was not found', snapshot['id'])
+            LOG.error('Snapshot %s was not found' % snapshot['id'])
             return
         self._conn.delete_snapshot(ebs_ss.id)
 
@@ -216,7 +216,7 @@ class EBSDriver(BaseVD):
         try:
             ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
         except NotFound:
-            LOG.error('Snapshot %s was not found', snapshot['id'])
+            LOG.error('Snapshot %s was not found' % snapshot['id'])
             raise
         ebs_vol = ebs_ss.create_volume(self._zone)
 

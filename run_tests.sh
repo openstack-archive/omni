@@ -62,8 +62,10 @@ run_tests() {
 
 check_results() {
     project=$1
-    fail=$(awk '/Failed: /{print}' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
-    pass=$(awk '/Passed: /{print}' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
+    fail_string=$(awk '/Failed: /' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
+    pass_string=$(awk '/Passed: /' $DIRECTORY/$project.log | awk -F ': ' '{print $2}')
+    fail=`echo $fail_string | awk -F ' ' '{print $1}'`
+    pass=`echo $pass_string | awk -F ' ' '{print $1}'`
     if [[ $fail -gt 0 ]]; then
         results+=( ["$project"]="FAILED" )
     elif [[ $pass -gt 0 ]]; then

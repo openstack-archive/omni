@@ -164,7 +164,7 @@ def set_instance_metadata(compute, project, zone, instance, items,
             metadata['items'].extend(items)
         else:
             metadata['items'] = items
-    LOG.info("Adding metadata %s" % (metadata, ))
+    LOG.info("Adding metadata %s" % (metadata))
     # TODO: Add del operation if required
     return compute.instances().setMetadata(project=project, zone=zone,
                                            instance=instance,
@@ -181,7 +181,7 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
     :param image_link: url, GCE Image link for instance launch
     :param machine_link: url, GCE Machine link for instance launch
     """
-    LOG.info("Launching instance %s with image %s, machine %s and network %s",
+    LOG.info("Launching instance %s with image %s, machine %s and network %s" %
              (name, image_link, machine_link, network_interfaces))
 
     config = {
@@ -269,7 +269,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     def watch_operation(name, request):
         result = request.execute()
         if result['status'] == 'DONE':
-            LOG.info("Operation %s status is %s", (name, result['status']))
+            LOG.info("Operation %s status is %s" % (name, result['status']))
             if 'error' in result:
                 raise GceOperationError(result['error'])
             raise loopingcall.LoopingCallDone()
@@ -416,7 +416,7 @@ def get_instance_boot_disk(compute, project, zone, instance):
             # Eg. projects/<project>/zones/<zone>/disks/<disk_name>
             items = urllib.parse.urlparse(disk_url).path.strip('/').split('/')
             if len(items) < 4 or items[-2] != 'disks':
-                LOG.error('Invalid disk URL %s', (disk_url))
+                LOG.error('Invalid disk URL %s' % (disk_url))
             disk_name, zone = items[-1], items[-3]
             disk_info = get_disk(compute, project, zone, disk_name)
             return disk_info
