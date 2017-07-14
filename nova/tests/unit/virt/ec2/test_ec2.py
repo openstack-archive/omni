@@ -23,7 +23,7 @@ from nova import test
 from nova.compute import power_state
 from nova.compute import vm_states
 from nova.compute import task_states
-from nova.image.glance import GlanceImageService
+from nova.image import glance
 from nova.tests.unit import fake_instance
 from nova.tests.unit import matchers
 from nova.virt.ec2 import EC2Driver
@@ -33,6 +33,11 @@ import base64
 import boto
 import contextlib
 import mock
+
+if hasattr(glance, "GlanceImageService"):
+    from nova.image.glance import GlanceImageService
+else:
+    from nova.image.glance import GlanceImageServiceV2 as GlanceImageService
 
 
 class EC2DriverTestCase(test.NoDBTestCase):
@@ -282,7 +287,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                                          None)
             mock_secgrp.return_value = []
             fake_run_instance_op = self.fake_ec2_conn.run_instances(
-                    'ami-1234abc')
+                'ami-1234abc')
             boto.ec2.EC2Connection.run_instances = mock.Mock()
             boto.ec2.EC2Connection.run_instances.return_value = \
                 fake_run_instance_op
@@ -290,11 +295,11 @@ class EC2DriverTestCase(test.NoDBTestCase):
             fake_instances = self.fake_ec2_conn.get_only_instances()
             self.assertEqual(1, len(fake_instances))
             boto.ec2.EC2Connection.run_instances.assert_called_once_with(
-                    instance_type='t2.small', key_name=None,
-                    image_id='ami-1234abc', user_data=userdata,
-                    subnet_id=self.subnet_id,
-                    private_ip_address='192.168.10.5',
-                    security_group_ids=[])
+                instance_type='t2.small', key_name=None,
+                image_id='ami-1234abc', user_data=userdata,
+                subnet_id=self.subnet_id,
+                private_ip_address='192.168.10.5',
+                security_group_ids=[])
         self.reset()
 
     @mock_ec2
@@ -407,7 +412,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
         self.conn.reboot(self.context, self.instance, None, 'SOFT', None, None)
         boto.ec2.EC2Connection.reboot_instances.assert_called_once_with(
-                instance_ids=[fake_inst.id], dry_run=False)
+            instance_ids=[fake_inst.id], dry_run=False)
         self.reset()
 
     @mock_ec2
@@ -419,9 +424,9 @@ class EC2DriverTestCase(test.NoDBTestCase):
         EC2Driver._wait_for_state = mock.Mock()
         self.conn.reboot(self.context, self.instance, None, 'HARD', None, None)
         boto.ec2.EC2Connection.stop_instances.assert_called_once_with(
-                instance_ids=[fake_inst.id], force=False, dry_run=False)
+            instance_ids=[fake_inst.id], force=False, dry_run=False)
         boto.ec2.EC2Connection.start_instances.assert_called_once_with(
-                instance_ids=[fake_inst.id], dry_run=False)
+            instance_ids=[fake_inst.id], dry_run=False)
         wait_state_calls = EC2Driver._wait_for_state.call_args_list
         self.assertEqual(2, len(wait_state_calls))
         self.assertEqual('stopped', wait_state_calls[0][0][2])
@@ -527,7 +532,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             self.conn.destroy(self.context, self.instance, None, None)
             fake_stop.assert_not_called()
             fake_terminate.assert_called_once_with(
-                          instance_ids=[fake_instances[0].id])
+                instance_ids=[fake_instances[0].id])
         self.reset()
 
     @mock_ec2

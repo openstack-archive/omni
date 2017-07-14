@@ -261,7 +261,7 @@ class EC2Driver(driver.ComputeDriver):
         image_api = glance.get_default_image_service()
         image_meta = image_api._client.call(context, 2, 'get',
                                             image_lacking_meta['id'])
-        LOG.info("Calling _get_image_ami_id_from_meta Meta: %s", image_meta)
+        LOG.info("Calling _get_image_ami_id_from_meta Meta: %s" % image_meta)
         try:
             return image_meta['aws_image_id']
         except Exception as e:

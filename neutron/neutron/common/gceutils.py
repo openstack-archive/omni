@@ -118,7 +118,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     def watch_operation(name, request):
         result = request.execute()
         if result['status'] == 'DONE':
-            LOG.info("Operation %s status is %s", (name, result['status']))
+            LOG.info("Operation %s status is %s" % (name, result['status']))
             if 'error' in result:
                 raise GceOperationError(result['error'])
             raise loopingcall.LoopingCallDone()
@@ -329,7 +329,7 @@ def assign_floatingip(compute, project, zone, fixedip, floatingip):
         raise GceResourceNotFound(name='Instance with fixed IP',
                                   identifier=fixedip)
 
-    LOG.info('Assigning floating ip %s to instance %s',
+    LOG.info('Assigning floating ip %s to instance %s' %
              (floatingip, instance_name))
 
     operation = compute.instances().addAccessConfig(
@@ -356,7 +356,7 @@ def release_floatingip(compute, project, zone, floatingip):
 
         items = urllib.parse.urlparse(user).path.strip('/').split('/')
         if len(items) < 4 or items[-2] != 'instances':
-            LOG.warning('Unknown referrer %s to GCE static IP %s',
+            LOG.warning('Unknown referrer %s to GCE static IP %s' %
                         (user, floatingip))
             continue
 
@@ -365,7 +365,7 @@ def release_floatingip(compute, project, zone, floatingip):
         for interface in instance_info['networkInterfaces']:
             for accessconfig in interface.get('accessConfigs', []):
                 if accessconfig.get('natIP') == floatingip:
-                    LOG.info('Releasing %s from instance %s',
+                    LOG.info('Releasing %s from instance %s' %
                              (floatingip, instance))
                     operation = compute.instances().deleteAccessConfig(
                         project=project, zone=zone, instance=instance,

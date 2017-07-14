@@ -61,7 +61,7 @@ class GceRouterPlugin(
         self.gce_project = gceconf.project_id
         self.gce_svc_key = gceconf.service_key_path
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
-        LOG.info("GCE Router plugin init with %s project, %s region",
+        LOG.info("GCE Router plugin init with %s project, %s region" %
                  (self.gce_project, self.gce_region))
 
     def get_plugin_type(self):
@@ -76,7 +76,7 @@ class GceRouterPlugin(
     def _cleanup_floatingip(self, compute, project, region, floatingip):
         gceutils.release_floatingip(compute, project, region, floatingip)
         gceutils.delete_floatingip(compute, project, region, floatingip)
-        LOG.info('Released GCE static IP %s', floatingip)
+        LOG.info('Released GCE static IP %s' % floatingip)
 
     def create_floatingip(self, context, floatingip):
         compute, project, region = self.gce_svc, self.gce_project, self.gce_region
@@ -85,7 +85,7 @@ class GceRouterPlugin(
         try:
             public_ip_allocated = gceutils.allocate_floatingip(
                 compute, project, region)
-            LOG.info("Created GCE static IP %s", public_ip_allocated)
+            LOG.info("Created GCE static IP %s" % public_ip_allocated)
 
             floatingip_dict = floatingip['floatingip']
 
@@ -125,7 +125,7 @@ class GceRouterPlugin(
                 fixed_ip_address = fixed_ip['ip_address']
 
         if fixed_ip_address:
-            LOG.info('Found fixed ip %s for port %s',
+            LOG.info('Found fixed ip %s for port %s' %
                      (fixed_ip_address, port_id))
             gceutils.assign_floatingip(compute, project, zone,
                                        fixed_ip_address, floating_ip_address)
@@ -157,25 +157,25 @@ class GceRouterPlugin(
         return super(GceRouterPlugin, self).delete_floatingip(context, id)
 
     def create_router(self, context, router):
-        LOG.info("Creating router %s", router['router']['name'])
+        LOG.info("Creating router %s" % router['router']['name'])
         return super(GceRouterPlugin, self).create_router(context, router)
 
     def delete_router(self, context, id):
-        LOG.info("Deleting router %s", id)
+        LOG.info("Deleting router %s" % id)
         return super(GceRouterPlugin, self).delete_router(context, id)
 
     def update_router(self, context, id, router):
-        LOG.info("Updating router %s", id)
+        LOG.info("Updating router %s" % id)
         return super(GceRouterPlugin, self).update_router(context, id, router)
 
     def add_router_interface(self, context, router_id, interface_info):
-        LOG.info("Adding interface %s to router %s",
+        LOG.info("Adding interface %s to router %s" %
                  (interface_info, router_id))
         return super(GceRouterPlugin, self).add_router_interface(
             context, router_id, interface_info)
 
     def remove_router_interface(self, context, router_id, interface_info):
-        LOG.info("Deleting interface %s from router %s",
+        LOG.info("Deleting interface %s from router %s" %
                  (interface_info, router_id))
         return super(GceRouterPlugin, self).remove_router_interface(
             context, router_id, interface_info)

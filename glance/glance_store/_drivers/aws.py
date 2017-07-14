@@ -161,7 +161,7 @@ class Store(glance_store.driver.Store):
             if image.root_device_type == 'ebs':
                 for bdm in image.block_device_mappings:
                     if 'Ebs' in bdm and 'VolumeSize' in bdm['Ebs']:
-                        LOG.debug('ebs info: %s', bdm['Ebs'])
+                        LOG.debug('ebs info: %s' % bdm['Ebs'])
                         size += bdm['Ebs']['VolumeSize']
                 # convert size in gb to bytes
                 size *= 1073741824
