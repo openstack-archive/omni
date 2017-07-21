@@ -95,7 +95,6 @@ check_results glance_store
 check_results neutron
 
 echo "==========================================================================================="
-echo "Log files are in $DIRECTORY/. Please check log files for UNKNOWN status."
 echo "Cinder results: ${results[cinder]}"
 echo "Nova results: ${results[nova]}"
 echo "Glance results: ${results[glance_store]}"

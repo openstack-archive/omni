@@ -1,36 +1,36 @@
-# Copyright (c) 2017 Platform9 Systems Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
-"""Connection to the Google Cloud Platform -  GCE service"""
+"""
+Copyright (c) 2017 Platform9 Systems Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
+import gceutils
 import hashlib
-import uuid
 import time
+import uuid
 
+from googleapiclient.errors import HttpError
+from nova.compute import task_states
 import nova.conf
 from nova import exception
 from nova.image import glance
-from nova.virt import driver, hardware
+from nova.virt import driver
+from nova.virt.gce.constants import GCE_STATE_MAP
+from nova.virt import hardware
 from oslo_config import cfg
 from oslo_log import log as logging
-from nova.compute import task_states
 
-import gceutils
-from googleapiclient.errors import HttpError
-
-from nova.virt.gce.constants import GCE_STATE_MAP
 
 LOG = logging.getLogger(__name__)
+_GCE_NODES = None
+
 gce_group = cfg.OptGroup(name='GCE',
                          title='Options to connect to Google cloud')
 
@@ -61,7 +61,6 @@ DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']
 
 def set_nodes(nodes):
     """Sets GCE Driver's node.list.
-
     It has effect on the following methods:
         get_available_nodes()
         get_available_resource
@@ -75,7 +74,6 @@ def set_nodes(nodes):
 
 def restore_nodes():
     """Resets GCE Driver's node list modified by set_nodes().
-
     Usually called from tearDown().
     """
     global _GCE_NODES
@@ -112,15 +110,14 @@ class GCEDriver(driver.ComputeDriver):
         self.gce_svc_key = CONF.GCE.service_key_path
 
     def init_host(self, host):
-        """
-        Initialize anything that is necessary for the driver to function
-        """
+        """Initialize anything that is necessary for the driver to function"""
+        global _GCE_NODES
         self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
         self.gce_flavor_info = gceutils.get_machines_info(
             self.gce_svc, self.gce_project, self.gce_zone)
         LOG.info("GCE driver init with %s project, %s region" %
                  (self.gce_project, self.gce_zone))
-        if '_GCE_NODES' not in globals():
+        if _GCE_NODES is None:
             set_nodes([CONF.host])
 
     def _get_uuid_from_gce_id(self, gce_id):
@@ -208,11 +205,9 @@ class GCEDriver(driver.ComputeDriver):
               admin_password, network_info=None, block_device_info=None):
         """Create a new instance/VM/domain on the virtualization platform.
         Once this successfully completes, the instance should be
-        running (power_state.RUNNING).
-
-        If this fails, any partial instance should be completely
-        cleaned up, and the virtualization platform should be in the state
-        that it was before this call began.
+        running (power_state.RUNNING). If this fails, any partial instance
+        should be completely cleaned up, and the virtualization platform should
+        be in the state that it was before this call began.
 
         :param context: security context <Not Yet Implemented>
         :param instance: nova.objects.instance.Instance
@@ -228,7 +223,8 @@ class GCEDriver(driver.ComputeDriver):
                                   attached to the instance.
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        # GCE expects instance name in format "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?"
+        # GCE expects instance name in format
+        # "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?"
         # So we need to construct it for GCE from uuid
         gce_instance_name = 'inst-' + instance.uuid
         LOG.info("Creating instance %s as %s on GCE." %
@@ -267,6 +263,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def snapshot(self, context, instance, image_id, update_task_state):
         """Snapshot an image of the specified instance
+
         :param context: security context
         :param instance: nova.objects.instance.Instance
         :param image_id: Reference to a pre-created image holding the snapshot.
@@ -296,7 +293,8 @@ class GCEDriver(driver.ComputeDriver):
                 boot_disk = gceutils.get_instance_boot_disk(
                     compute, project, zone, gce_id)
             except AssertionError:
-                reason = "Unable to find boot disk from instance metadata %s" % instance.uuid
+                reason = "Unable to find boot disk from instance metadata {0}"
+                reason = reason.format(instance.uuid)
                 raise exception.InvalidMetadata(reason=reason)
             disk_name = boot_disk['name']
             LOG.debug("1. Found boot disk %s for instance %s" %
@@ -408,12 +406,10 @@ class GCEDriver(driver.ComputeDriver):
 
     def reboot(self, context, instance, network_info, reboot_type,
                block_device_info=None, bad_volumes_callback=None):
-        """
-        Reboot the specified instance.
-        After this is called successfully, the instance's state
-        goes back to power_state.RUNNING. The virtualization
-        platform should ensure that the reboot action has completed
-        successfully even in cases in which the underlying domain/vm
+        """Reboot the specified instance. After this is called successfully,
+        the instance's state goes back to power_state.RUNNING. The
+        virtualization platform should ensure that the reboot action has
+        completed successfully even in cases in which the underlying domain/vm
         is paused or halted/stopped.
 
         :param instance: nova.objects.instance.Instance
@@ -493,8 +489,8 @@ class GCEDriver(driver.ComputeDriver):
         raise NotImplementedError()
 
     def power_off(self, instance, timeout=0, retry_interval=0):
-        """
-        Power off the specified instance.
+        """Power off the specified instance.
+
         :param instance: nova.objects.instance.Instance
         :param timeout: time to wait for GuestOS to shutdown
         :param retry_interval: How often to signal guest while
@@ -529,6 +525,7 @@ class GCEDriver(driver.ComputeDriver):
         GCE doesn't support pause and cannot save system state and hence
         we've implemented the closest functionality which is to poweroff the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         LOG.info("Pause instance %s" % instance.uuid)
@@ -539,6 +536,7 @@ class GCEDriver(driver.ComputeDriver):
         Since GCE doesn't support pause and cannot save system state, we
         had implemented the closest functionality which is to poweroff the
         instance. and powering on such an instance in this method.
+
         :param instance: nova.objects.instance.Instance
         """
         LOG.info("Unpause instance %s" % instance.uuid)
@@ -550,6 +548,7 @@ class GCEDriver(driver.ComputeDriver):
         GCE doesn't support suspend and cannot save system state and hence
         we've implemented the closest functionality which is to poweroff the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         LOG.info("Suspending instance %s" % instance.uuid)
@@ -560,6 +559,7 @@ class GCEDriver(driver.ComputeDriver):
         Since GCE doesn't support resume and we cannot save system state,
         we've implemented the closest functionality which is to power on the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         LOG.info("Resuming instance %s" % instance.uuid)
@@ -568,7 +568,6 @@ class GCEDriver(driver.ComputeDriver):
     def destroy(self, context, instance, network_info, block_device_info=None,
                 destroy_disks=True, migrate_data=None):
         """Destroy the specified instance from the Hypervisor.
-
         If the instance is not found (for example if networking failed), this
         function should still succeed.  It's probably a good idea to log a
         warning in that case.
@@ -596,16 +595,15 @@ class GCEDriver(driver.ComputeDriver):
         except HttpError:
             # Sometimes instance may not exist in GCE, in that case we just
             # allow deleting VM from openstack
-            LOG.error("Instance %s not found in GCE, removing from openstack." %
-                      instance.uuid)
+            LOG.error("Instance {0} not found in GCE, removing from openstack."
+                      .format(instance.uuid))
             return
         gceutils.wait_for_operation(compute, project, operation)
         LOG.info("Destroy Complete %s" % instance.uuid)
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
                       disk_bus=None, device_type=None, encryption=None):
-        """Attach the disk to the instance at mountpoint using info.
-        """
+        """Attach the disk to the instance at mountpoint using info."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
         gce_volume = connection_info['data']
@@ -619,8 +617,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def detach_volume(self, connection_info, instance, mountpoint,
                       encryption=None):
-        """Detach the disk attached to the instance.
-        """
+        """Detach the disk attached to the instance."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
         gce_volume = connection_info['data']
@@ -633,8 +630,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def swap_volume(self, old_connection_info, new_connection_info, instance,
                     mountpoint, resize_to):
-        """Replace the disk attached to the instance.
-        """
+        """Replace the disk attached to the instance."""
         raise NotImplementedError()
 
     def attach_interface(self, instance, image_meta, vif):
@@ -645,6 +641,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def get_info(self, instance):
         """Get the current status of an instance, by name (not ID!)
+
         :param instance: nova.objects.instance.Instance object
         Returns a dict containing:
         :state:           the running state, one of the power_state codes
@@ -697,13 +694,12 @@ class GCEDriver(driver.ComputeDriver):
         """Return bandwidth usage counters for each interface on each
            running VM.
         """
+
         bw = []
         return bw
 
     def get_all_volume_usage(self, context, compute_host_bdms):
-        """Return usage info for volumes attached to vms on
-           a given host.
-        """
+        """Return usage info for volumes attached to vms on a given host."""
         volusage = []
         return volusage
 
@@ -717,8 +713,7 @@ class GCEDriver(driver.ComputeDriver):
         raise NotImplementedError()
 
     def get_spice_console(self, instance):
-        """ Simple Protocol for Independent Computing Environments
-        """
+        """Simple Protocol for Independent Computing Environments"""
         raise NotImplementedError()
 
     def get_console_pool_info(self, console_type):
@@ -728,16 +723,17 @@ class GCEDriver(driver.ComputeDriver):
         raise NotImplementedError()
 
     def get_available_resource(self, nodename):
-        """Retrieve resource information.
-        Updates compute manager resource info on ComputeNode table.
-        This method is called when nova-compute launches and as part of
-        a periodic task that records results in the DB.
-        Without real hypervisor, pretend we have lots of disk and ram.
-        :param nodename:
-            node which the caller want to get resources from
-            a driver that manages only one node can safely ignore this
+        """Retrieve resource information. Updates compute manager resource info
+        on ComputeNode table. This method is called when nova-compute launches
+        and as part of a periodic task that records results in the DB. Without
+        real hypervisor, pretend we have lots of disk and ram.
+
+        :param nodename: node which the caller want to get resources from
+        a driver that manages only one node can safely ignore this
         :returns: Dictionary describing resources
         """
+
+        global _GCE_NODES
         if nodename not in _GCE_NODES:
             return {}
 
@@ -789,6 +785,7 @@ class GCEDriver(driver.ComputeDriver):
                          network_info, image_meta, resize_instance,
                          block_device_info=None, power_on=True):
         """Completes a resize
+
         :param migration: the migrate/resize information
         :param instance: nova.objects.instance.Instance being migrated/resized
         :param power_on: is True  the instance should be powered on
@@ -797,6 +794,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def confirm_migration(self, migration, instance, network_info):
         """Confirms a resize, destroying the source VM.
+
         :param instance: nova.objects.instance.Instance
         """
         raise NotImplementedError()
@@ -810,6 +808,7 @@ class GCEDriver(driver.ComputeDriver):
 
     def get_host_stats(self, refresh=False):
         """Return GCE Host Status of name, ram, disk, network."""
+        global _GCE_NODES
         stats = []
         for nodename in _GCE_NODES:
             host_status = self.host_status_base.copy()
@@ -836,6 +835,7 @@ class GCEDriver(driver.ComputeDriver):
         """Start/Stop host maintenance window. On start, it triggers
         guest VMs evacuation.
         """
+
         if not mode:
             return 'off_maintenance'
         return 'on_maintenance'
@@ -859,6 +859,7 @@ class GCEDriver(driver.ComputeDriver):
         return {'ip': '127.0.0.1', 'initiator': 'GCE', 'host': 'GCEhost'}
 
     def get_available_nodes(self, refresh=False):
+        global _GCE_NODES
         return _GCE_NODES
 
     def instance_on_disk(self, instance):

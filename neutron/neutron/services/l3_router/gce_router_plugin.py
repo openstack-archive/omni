@@ -1,21 +1,19 @@
-# Copyright 2017 Platform9 Systems Inc.(http://www.platform9.com)
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright 2017 Platform9 Systems Inc.(http://www.platform9.com)
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
 import neutron_lib
-from distutils.version import LooseVersion
-from oslo_log import log as logging
 
+from distutils.version import LooseVersion
 from neutron.common import exceptions
 from neutron.common import gceconf
 from neutron.common import gceutils
@@ -30,6 +28,7 @@ from neutron.plugins.common import constants
 from neutron.quota import resource_registry
 from neutron.services import service_base
 from neutron_lib import constants as n_const
+from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
@@ -37,17 +36,19 @@ if LooseVersion(neutron_lib.__version__) < LooseVersion("1.0.0"):
     router = l3_db.Router
     floating_ip = l3_db.FloatingIP
     plugin_type = constants.L3_ROUTER_NAT
+    service_plugin_class = service_base.ServicePluginBase
 else:
     from neutron.db.models import l3
     from neutron_lib.plugins import constants as plugin_constants
-    from neutron_lib.services import base as service_base
+    from neutron_lib.services import base
     router = l3.Router
     floating_ip = l3.FloatingIP
     plugin_type = plugin_constants.L3
+    service_plugin_class = base.ServicePluginBase
 
 
 class GceRouterPlugin(
-        service_base.ServicePluginBase, common_db_mixin.CommonDbMixin,
+        service_plugin_class, common_db_mixin.CommonDbMixin,
         extraroute_db.ExtraRoute_db_mixin, l3_hamode_db.L3_HA_NAT_db_mixin,
         l3_gwmode_db.L3_NAT_db_mixin, l3_dvrscheduler_db.L3_DVRsch_db_mixin,
         l3_hascheduler_db.L3_HA_scheduler_db_mixin):
@@ -93,7 +94,9 @@ class GceRouterPlugin(
         LOG.info('Released GCE static IP %s' % floatingip)
 
     def create_floatingip(self, context, floatingip):
-        compute, project, region = self.gce_svc, self.gce_project, self.gce_region
+        compute = self.gce_svc
+        project = self.gce_project
+        region = self.gce_region
         public_ip_allocated = None
 
         try:
@@ -154,7 +157,9 @@ class GceRouterPlugin(
             context, id)
         public_ip_allocated = orig_floatingip['floating_ip_address']
         port_id = floatingip_dict['port_id']
-        compute, project, region = self.gce_svc, self.gce_project, self.gce_region
+        compute = self.gce_svc
+        project = self.gce_project
+        region = self.gce_region
         gceutils.release_floatingip(compute, project, region,
                                     public_ip_allocated)
         if port_id:
@@ -166,7 +171,9 @@ class GceRouterPlugin(
     def delete_floatingip(self, context, id):
         floating_ip = super(GceRouterPlugin, self).get_floatingip(context, id)
         public_ip_allocated = floating_ip['floating_ip_address']
-        compute, project, region = self.gce_svc, self.gce_project, self.gce_region
+        compute = self.gce_svc
+        project = self.gce_project
+        region = self.gce_region
         self._cleanup_floatingip(compute, project, region, public_ip_allocated)
         return super(GceRouterPlugin, self).delete_floatingip(context, id)
 

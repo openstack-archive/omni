@@ -1,38 +1,34 @@
-# Copyright 2016 Platform9 Systems Inc.
-# All Rights Reserved.
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright 2016 Platform9 Systems Inc.
+All Rights Reserved.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
-from moto import mock_ec2
-from moto import mock_cloudwatch
-from moto.ec2 import ec2_backends
-from nova import context
-from nova import exception
-from nova import objects
-from nova import test
-from nova.compute import power_state
-from nova.compute import vm_states
-from nova.compute import task_states
-from nova.image import glance
-from nova.tests.unit import fake_instance
-from nova.tests.unit import matchers
-from nova.virt.ec2 import EC2Driver
-from oslo_config import cfg
-from oslo_utils import uuidutils
 import base64
 import boto
 import contextlib
 import mock
+
+from moto import mock_cloudwatch
+from moto import mock_ec2
+from nova.compute import task_states
+from nova import context
+from nova import exception
+from nova.image import glance
+from nova import objects
+from nova import test
+from nova.tests.unit import fake_instance
+from nova.tests.unit import matchers
+from nova.virt.ec2 import EC2Driver
+from oslo_utils import uuidutils
 
 if hasattr(glance, "GlanceImageService"):
     from nova.image.glance import GlanceImageService
