@@ -15,5 +15,6 @@ limitations under the License.
 from cinder.exception import CinderException
 from cinder.i18n import _
 
+
 class AvailabilityZoneNotFound(CinderException):
     message = _("Availability Zone %(az)s was not found")

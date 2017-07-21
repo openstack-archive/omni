@@ -1,24 +1,23 @@
-# Copyright (c) 2017 Platform9 Systems Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright (c) 2017 Platform9 Systems Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
-import time
 import six
-from oslo_log import log as logging
+import time
 
-from nova.i18n import _
 from googleapiclient.discovery import build
+from nova.i18n import _
 from oauth2client.client import GoogleCredentials
+from oslo_log import log as logging
 from oslo_service import loopingcall
 from oslo_utils import reflection
 from six.moves import urllib
@@ -63,7 +62,7 @@ class _FixedIntervalWithTimeoutLoopingCall(loopingcall.LoopingCallBase):
 # definition _FixedIntervalWithTimeoutLoopingCall
 if not hasattr(loopingcall, 'FixedIntervalWithTimeoutLoopingCall'):
     loopingcall.FixedIntervalWithTimeoutLoopingCall = \
-            _FixedIntervalWithTimeoutLoopingCall
+        _FixedIntervalWithTimeoutLoopingCall
 
 
 class GceOperationError(Exception):
@@ -72,6 +71,7 @@ class GceOperationError(Exception):
 
 def list_instances(compute, project, zone):
     """Returns list of GCE instance resources for specified project
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -84,6 +84,7 @@ def list_instances(compute, project, zone):
 
 def get_instance(compute, project, zone, instance):
     """Get GCE instance information
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -96,6 +97,7 @@ def get_instance(compute, project, zone, instance):
 
 def get_instance_metadata(compute, project, zone, instance):
     """Returns specified instance's metadata
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -109,6 +111,7 @@ def get_instance_metadata(compute, project, zone, instance):
 
 def get_instances_metadata_key(compute, project, zone, instance, key):
     """Returns particular key information for specified instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -125,7 +128,8 @@ def get_instances_metadata_key(compute, project, zone, instance, key):
 
 
 def get_external_ip(compute, project, zone, instance):
-    """ Return external IP of GCE instance return empty string otherwise
+    """Return external IP of GCE instance return empty string otherwise
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -144,6 +148,7 @@ def get_external_ip(compute, project, zone, instance):
 def set_instance_metadata(compute, project, zone, instance, items,
                           operation='add'):
     """Perform specified operation on GCE instance metadata
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -165,7 +170,7 @@ def set_instance_metadata(compute, project, zone, instance, items,
         else:
             metadata['items'] = items
     LOG.info("Adding metadata %s" % (metadata))
-    # TODO: Add del operation if required
+    # TODO(del_operation): Add del operation if required
     return compute.instances().setMetadata(project=project, zone=zone,
                                            instance=instance,
                                            body=metadata).execute()
@@ -174,6 +179,7 @@ def set_instance_metadata(compute, project, zone, instance, items,
 def create_instance(compute, project, zone, name, image_link, machine_link,
                     network_interfaces):
     """Create GCE instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -214,6 +220,7 @@ def create_instance(compute, project, zone, name, image_link, machine_link,
 
 def delete_instance(compute, project, zone, name):
     """Delete GCE instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -225,6 +232,7 @@ def delete_instance(compute, project, zone, name):
 
 def stop_instance(compute, project, zone, name):
     """Stop GCE instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -236,6 +244,7 @@ def stop_instance(compute, project, zone, name):
 
 def start_instance(compute, project, zone, name):
     """Start GCE instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -247,6 +256,7 @@ def start_instance(compute, project, zone, name):
 
 def reset_instance(compute, project, zone, name):
     """Hard reset GCE instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -258,10 +268,12 @@ def reset_instance(compute, project, zone, name):
 
 def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     """Wait for GCE operation to complete, raise error if operation failure
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
-    :param operation: object, Operation resource obtained by calling GCE asynchronous API
-        All GCE asynchronous API's return operation resource to followup there completion.
+    :param operation: object, Operation resource obtained by calling GCE
+    asynchronous API. All GCE asynchronous API's return operation resource to
+    followup there completion.
     :param interval: int, Time period(seconds) between two GCE operation checks
     :param timeout: int, Absoulte time period(seconds) to monitor GCE operation
     """
@@ -295,6 +307,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
 
 def get_gce_service(service_key):
     """Returns GCE compute resource object for interacting with GCE API
+
     :param service_key: string, Path of service key obtained from
         https://console.cloud.google.com/apis/credentials
     """
@@ -305,6 +318,7 @@ def get_gce_service(service_key):
 
 def get_machines_info(compute, project, zone):
     """Return machine type info from GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -323,6 +337,7 @@ def get_machines_info(compute, project, zone):
 
 def get_images(compute, project):
     """Return public images info from GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     """
@@ -336,6 +351,7 @@ def get_images(compute, project):
 
 def get_image(compute, project, name):
     """Return public images info from GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     """
@@ -345,6 +361,7 @@ def get_image(compute, project, name):
 
 def delete_image(compute, project, name):
     """Delete image from GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE image name
@@ -357,6 +374,7 @@ def delete_image(compute, project, name):
 
 def get_network(compute, project, name):
     """Return network info
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE network name
@@ -367,6 +385,7 @@ def get_network(compute, project, name):
 
 def attach_disk(compute, project, zone, instance_name, disk_name, disk_link):
     """Attach disk to instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -392,6 +411,7 @@ def attach_disk(compute, project, zone, instance_name, disk_name, disk_link):
 
 def detach_disk(compute, project, zone, instance_name, disk_name):
     """Detach disk from instance
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -406,8 +426,7 @@ def detach_disk(compute, project, zone, instance_name, disk_name):
 
 
 def get_instance_boot_disk(compute, project, zone, instance):
-    """Return boot disk info for instance
-    """
+    """Return boot disk info for instance"""
     gce_instance = get_instance(compute, project, zone, instance)
     for disk in gce_instance['disks']:
         if disk['boot']:
@@ -426,6 +445,7 @@ def get_instance_boot_disk(compute, project, zone, instance):
 
 def create_disk(compute, project, zone, name, size):
     """Create disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -446,6 +466,7 @@ def create_disk(compute, project, zone, name, size):
 
 def delete_disk(compute, project, zone, name):
     """Delete disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -459,6 +480,7 @@ def delete_disk(compute, project, zone, name):
 
 def get_disk(compute, project, zone, name):
     """Get info of disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -471,6 +493,7 @@ def get_disk(compute, project, zone, name):
 
 def snapshot_disk(compute, project, zone, name, snapshot_name):
     """Create snapshot of disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -486,6 +509,7 @@ def snapshot_disk(compute, project, zone, name, snapshot_name):
 
 def get_snapshot(compute, project, name):
     """Get info of snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE snapshot name
@@ -497,6 +521,7 @@ def get_snapshot(compute, project, name):
 
 def delete_snapshot(compute, project, name):
     """Delete snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE snapshot name
@@ -509,6 +534,7 @@ def delete_snapshot(compute, project, name):
 def create_disk_from_snapshot(compute, project, zone, name, snapshot_name,
                               disk_type="pd-standard"):
     """Create disk from snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone

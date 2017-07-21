@@ -1,32 +1,32 @@
-# Copyright (c) 2017 Platform9 Systems Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright (c) 2017 Platform9 Systems Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
-import os
 import mock
+import os
 
-from neutron.tests import base
-from neutron.plugins.ml2.drivers.gce.mech_gce import GceMechanismDriver
-from neutron.plugins.ml2.drivers.gce.mech_gce import SecurityGroupInvalidDirection
+from neutron.extensions import securitygroup as sg
 from neutron.manager import NeutronManager
+from neutron.plugins.ml2.drivers.gce.mech_gce import GceMechanismDriver
+from neutron.plugins.ml2.drivers.gce.mech_gce import SecurityGroupInvalidDirection  # noqa
+from neutron.tests import base
 from neutron.tests.common.gce import gce_mock
 from neutron.tests.common.gce.gce_mock import FakeNeutronManager
 from neutron.tests.unit.extensions import test_securitygroup as test_sg
-from neutron.extensions import securitygroup as sg
 from neutron_lib import constants as const
 
 DATA_DIR = os.path.dirname(os.path.abspath("gce_mock.py")) + '/data'
-NETWORK_LINK = "projects/omni-163105/global/networks/net-03c4f178-670e-4805-a511-9470ca4a0b06"
+NETWORKS_LINK = "projects/omni-163105/global/networks"
+NETWORK_LINK = NETWORKS_LINK + "/net-03c4f178-670e-4805-a511-9470ca4a0b06"
 
 if hasattr(NeutronManager, "get_plugin"):
     neutron_get_plugin = 'neutron.manager.NeutronManager.get_plugin'
