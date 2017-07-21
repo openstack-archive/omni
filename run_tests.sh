@@ -102,10 +102,10 @@ echo "Glance results: ${results[glance_store]}"
 echo "Neutron results: ${results[neutron]}"
 echo "==========================================================================================="
 
-if [ "${results[cinder]}" = "FAILED" ] || \
-    [ "${results[nova]}" = "FAILED" ] || \
-    [ "${results[glance_store]}" = "FAILED" ] || \
-    [ "${results[neutron]}" = "FAILED" ]; then
+if [ "${results[cinder]}" = "PASSED" ] || \
+    [ "${results[nova]}" = "PASSED" ] || \
+    [ "${results[glance_store]}" = "PASSED" ] || \
+    [ "${results[neutron]}" = "PASSED" ]; then
     echo "Test cases failed"
     exit 1
 fi

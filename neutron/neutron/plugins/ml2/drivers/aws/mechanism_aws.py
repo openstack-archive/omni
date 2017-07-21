@@ -12,18 +12,24 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
+import random
 from oslo_log import log
 from neutron import manager
 from neutron.callbacks import resources
 from neutron.callbacks import events
 from neutron.common.aws_utils import AwsUtils
-from neutron.common.exceptions import AwsException
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers.aws import callbacks
-import json
-import random
+from neutron._i18n import _
+from neutron_lib.exceptions import NeutronException
 
 LOG = log.getLogger(__name__)
+
+
+class AwsException(NeutronException):
+    message = _("AWS Error: '%(error_code)s' - '%(message)s'")
+
 
 class AwsMechanismDriver(api.MechanismDriver):
     """Ml2 Mechanism driver for AWS"""
