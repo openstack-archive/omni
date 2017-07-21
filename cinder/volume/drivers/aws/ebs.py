@@ -10,34 +10,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
 import time
 
 from boto import ec2
 from boto.regioninfo import RegionInfo
-from oslo_service import loopingcall
-from oslo_log import log as logging
-from oslo_config import cfg
-
-from cinder.exception import VolumeNotFound, NotFound, APITimeout, InvalidConfigurationValue
+from cinder.exception import APITimeout
+from cinder.exception import InvalidConfigurationValue
+from cinder.exception import NotFound
+from cinder.exception import VolumeNotFound
 from cinder.volume.driver import BaseVD
+from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
+from oslo_config import cfg
+from oslo_log import log as logging
+from oslo_service import loopingcall
 
-from exception import AvailabilityZoneNotFound
 
-aws_group = cfg.OptGroup(name='AWS', title='Options to connect to an AWS environment')
+aws_group = cfg.OptGroup(name='AWS',
+                         title='Options to connect to an AWS environment')
 aws_opts = [
     cfg.StrOpt('secret_key', help='Secret key of AWS account', secret=True),
     cfg.StrOpt('access_key', help='Access key of AWS account', secret=True),
     cfg.StrOpt('region_name', help='AWS region'),
     cfg.StrOpt('az', help='AWS availability zone'),
-    cfg.IntOpt('wait_time_min', help='Maximum wait time for AWS operations', default=5)
+    cfg.IntOpt('wait_time_min', help='Maximum wait time for AWS operations',
+               default=5)
 ]
 
 ebs_opts = [
     cfg.StrOpt('ebs_pool_name', help='Storage pool name'),
-    cfg.IntOpt('ebs_free_capacity_gb', help='Free space available on EBS storage pool',
-               default=1024),
-    cfg.IntOpt('ebs_total_capacity_gb', help='Total space available on EBS storage pool',
-               default=1024)
+    cfg.IntOpt('ebs_free_capacity_gb',
+               help='Free space available on EBS storage pool', default=1024),
+    cfg.IntOpt('ebs_total_capacity_gb',
+               help='Total space available on EBS storage pool', default=1024)
 ]
 
 CONF = cfg.CONF
@@ -48,9 +53,7 @@ LOG = logging.getLogger(__name__)
 
 
 class EBSDriver(BaseVD):
-    """
-    Implements cinder volume interface with EBS as storage backend.
-    """
+    """Implements cinder volume interface with EBS as storage backend."""
     def __init__(self, *args, **kwargs):
         super(EBSDriver, self).__init__(*args, **kwargs)
         self.VERSION = '1.0.0'
@@ -70,20 +73,20 @@ class EBSDriver(BaseVD):
         region_name = CONF.AWS.region_name
         endpoint = '.'.join(['ec2', region_name, 'amazonaws.com'])
         region = RegionInfo(name=region_name, endpoint=endpoint)
-        self._conn = ec2.EC2Connection(aws_access_key_id=CONF.AWS.access_key,
-                                       aws_secret_access_key=CONF.AWS.secret_key,
-                                       region=region)
-        # resort to first AZ for now. TODO: expose this through API
+        self._conn = ec2.EC2Connection(
+            aws_access_key_id=CONF.AWS.access_key,
+            aws_secret_access_key=CONF.AWS.secret_key,
+            region=region)
+        # resort to first AZ for now. TODO(do_setup): expose this through API
         az = CONF.AWS.az
 
         try:
             self._zone = filter(lambda z: z.name == az,
-                            self._conn.get_all_zones())[0]
+                                self._conn.get_all_zones())[0]
         except IndexError:
             raise AvailabilityZoneNotFound(az=az)
 
         self.set_initialized()
-
 
     def _wait_for_create(self, id, final_state):
         def _wait_for_status(start_time):
@@ -96,7 +99,8 @@ class EBSDriver(BaseVD):
             if obj.status == final_state:
                 raise loopingcall.LoopingCallDone(True)
 
-        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status, time.time())
+        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status,
+                                                     time.time())
         return timer.start(interval=5).wait()
 
     def _wait_for_snapshot(self, id, final_state):
@@ -109,7 +113,8 @@ class EBSDriver(BaseVD):
             if obj.status == final_state:
                 raise loopingcall.LoopingCallDone(True)
 
-        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status, time.time())
+        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status,
+                                                     time.time())
         return timer.start(interval=5).wait()
 
     def create_volume(self, volume):
@@ -117,11 +122,12 @@ class EBSDriver(BaseVD):
         ebs_vol = self._conn.create_volume(size, self._zone)
         if self._wait_for_create(ebs_vol.id, 'available') is False:
             raise APITimeout(service='EC2')
-        self._conn.create_tags([ebs_vol.id], {'project_id': volume['project_id'],
-                                              'uuid': volume['id'],
-                                              'is_clone': False,
-                                              'created_at': volume['created_at'],
-                                              'Name': volume['display_name']})
+        self._conn.create_tags([ebs_vol.id],
+                               {'project_id': volume['project_id'],
+                                'uuid': volume['id'],
+                                'is_clone': False,
+                                'created_at': volume['created_at'],
+                                'Name': volume['display_name']})
 
     def _find(self, obj_id, find_func):
         ebs_objs = find_func(filters={'tag:uuid': obj_id})
@@ -139,7 +145,7 @@ class EBSDriver(BaseVD):
         self._conn.delete_volume(ebs_vol.id)
 
     def check_for_setup_error(self):
-        # TODO throw errors if AWS config is broken
+        # TODO(check_setup_error) throw errors if AWS config is broken
         pass
 
     def create_export(self, context, volume, connector):
@@ -198,11 +204,12 @@ class EBSDriver(BaseVD):
         if self._wait_for_snapshot(ebs_snap.id, 'completed') is False:
             raise APITimeout(service='EC2')
 
-        self._conn.create_tags([ebs_snap.id], {'project_id': snapshot['project_id'],
-                                               'uuid': snapshot['id'],
-                                               'is_clone': True,
-                                               'created_at': snapshot['created_at'],
-                                               'Name': snapshot['display_name']})
+        self._conn.create_tags([ebs_snap.id],
+                               {'project_id': snapshot['project_id'],
+                                'uuid': snapshot['id'],
+                                'is_clone': True,
+                                'created_at': snapshot['created_at'],
+                                'Name': snapshot['display_name']})
 
     def delete_snapshot(self, snapshot):
         try:
@@ -222,11 +229,12 @@ class EBSDriver(BaseVD):
 
         if self._wait_for_create(ebs_vol.id, 'available') is False:
             raise APITimeout(service='EC2')
-        self._conn.create_tags([ebs_vol.id], {'project_id': volume['project_id'],
-                                              'uuid': volume['id'],
-                                              'is_clone': False,
-                                              'created_at': volume['created_at'],
-                                              'Name': volume['display_name']})
+        self._conn.create_tags([ebs_vol.id],
+                               {'project_id': volume['project_id'],
+                                'uuid': volume['id'],
+                                'is_clone': False,
+                                'created_at': volume['created_at'],
+                                'Name': volume['display_name']})
 
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         raise NotImplemented()
@@ -239,7 +247,3 @@ class EBSDriver(BaseVD):
 
     def copy_volume_data(self, context, src_vol, dest_vol, remote=None):
         raise NotImplemented()
-
-
-
-

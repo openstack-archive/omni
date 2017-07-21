@@ -10,19 +10,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-import mock
 
-from oslo_service import loopingcall
 from cinder import context
+from cinder.exception import APITimeout
+from cinder.exception import NotFound
+from cinder.exception import VolumeNotFound
 from cinder import test
-from cinder.exception import APITimeout, NotFound, VolumeNotFound
 from cinder.volume.drivers.aws import ebs
 from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
+import mock
 from moto import mock_ec2
+from oslo_service import loopingcall
 
 
 class EBSVolumeTestCase(test.TestCase):
-
     @mock_ec2
     def setUp(self):
         super(EBSVolumeTestCase, self).setUp()
@@ -79,11 +80,13 @@ class EBSVolumeTestCase(test.TestCase):
         def wait(*args):
             def _wait():
                 raise loopingcall.LoopingCallDone(False)
+
             timer = loopingcall.FixedIntervalLoopingCall(_wait)
             return timer.start(interval=1).wait()
 
         mock_wait.side_effect = wait
-        self.assertRaises(APITimeout, self._driver.create_volume, self._stub_volume())
+        self.assertRaises(APITimeout, self._driver.create_volume,
+                          self._stub_volume())
 
     @mock_ec2
     def test_volume_deletion(self):
@@ -121,6 +124,7 @@ class EBSVolumeTestCase(test.TestCase):
 
             timer = loopingcall.FixedIntervalLoopingCall(_wait)
             return timer.start(interval=1).wait()
+
         mock_wait.side_effect = wait
         ss = self._stub_snapshot()
         self._driver.create_volume(ss['volume'])
@@ -132,7 +136,8 @@ class EBSVolumeTestCase(test.TestCase):
         volume = self._stub_volume()
         self._driver.create_volume(volume)
         self._driver.create_snapshot(snapshot)
-        self.assertIsNone(self._driver.create_volume_from_snapshot(volume, snapshot))
+        self.assertIsNone(
+            self._driver.create_volume_from_snapshot(volume, snapshot))
 
     @mock_ec2
     def test_volume_from_non_existing_snapshot(self):
