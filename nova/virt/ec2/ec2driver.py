@@ -1,52 +1,49 @@
-# Copyright (c) 2014 Thoughtworks.
-# Copyright (c) 2016 Platform9 Systems Inc.
-# All Rights reserved
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
-
-"""Connection to the Amazon Web Services - EC2 service"""
+"""
+Copyright (c) 2014 Thoughtworks.
+Copyright (c) 2016 Platform9 Systems Inc.
+All Rights reserved
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
 import base64
-import boto.ec2.cloudwatch
 import datetime
 import hashlib
 import json
-import sys
 import time
 import uuid
-from threading import Lock
-from boto import ec2, vpc
+
+from boto import ec2
 from boto import exception as boto_exc
 from boto.exception import EC2ResponseError
 from boto.regioninfo import RegionInfo
-from oslo_config import cfg
-from nova.i18n import *
 from nova import block_device
 from nova.compute import power_state
 from nova.compute import task_states
 from nova.console import type as ctype
 from nova import db
 from nova import exception
+from nova.i18n import _
 from nova.image import glance
+from nova.virt import driver
+from nova.virt.ec2.exception_handler import Ec2ExceptionHandler
+from nova.virt import hardware
+from nova.virt import virtapi
+from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
-from nova.virt import driver
-from nova.virt import virtapi
-from nova.virt import hardware
-from nova.virt.ec2.exception_handler import Ec2ExceptionHandler
+
 LOG = logging.getLogger(__name__)
 
-aws_group = cfg.OptGroup(name='AWS', title='Options to connect to an AWS cloud')
+aws_group = cfg.OptGroup(name='AWS',
+                         title='Options to connect to an AWS cloud')
 
 aws_opts = [
     cfg.StrOpt('secret_key', help='Secret key of AWS account', secret=True),
@@ -70,7 +67,7 @@ aws_opts = [
 ]
 
 CONF = cfg.CONF
-#CONF.import_opt('my_ip', 'nova.netconf')
+# CONF.import_opt('my_ip', 'nova.netconf')
 
 CONF.register_group(aws_group)
 CONF.register_opts(aws_opts, group=aws_group)
@@ -126,7 +123,7 @@ EC2_FLAVOR_MAP = {
     't2.small': {'memory_mb': 2048.0, 'vcpus': 1},
     'x1.32xlarge': {'memory_mb': 1998848.0, 'vcpus': 128}
 }
-
+_EC2_NODES = None
 
 DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']
 
@@ -175,7 +172,7 @@ class EC2Driver(driver.ComputeDriver):
             'cpu_info': {},
             'disk_available_least': CONF.AWS.max_disk_gb,
         }
-
+        global _EC2_NODES
         self._mounts = {}
         self._interfaces = {}
         self._uuid_to_ec2_instance = {}
@@ -184,28 +181,27 @@ class EC2Driver(driver.ComputeDriver):
         aws_endpoint = "ec2." + aws_region + ".amazonaws.com"
 
         region = RegionInfo(name=aws_region, endpoint=aws_endpoint)
-        self.ec2_conn = ec2.EC2Connection(aws_access_key_id=CONF.AWS.access_key,
-                                          aws_secret_access_key=CONF.AWS.secret_key,
-                                          region=region)
+        self.ec2_conn = ec2.EC2Connection(
+            aws_access_key_id=CONF.AWS.access_key,
+            aws_secret_access_key=CONF.AWS.secret_key,
+            region=region)
 
         self.cloudwatch_conn = ec2.cloudwatch.connect_to_region(
             aws_region, aws_access_key_id=CONF.AWS.access_key,
             aws_secret_access_key=CONF.AWS.secret_key)
 
         LOG.info("EC2 driver init with %s region" % aws_region)
-        if not '_EC2_NODES' in globals():
+        if _EC2_NODES is None:
             set_nodes([CONF.host])
 
     def init_host(self, host):
-        """
-        Initialize anything that is necessary for the driver to function,
+        """Initialize anything that is necessary for the driver to function,
         including catching up with currently running VM's on the given host.
         """
         return
 
     def list_instances(self):
-        """
-        Return the names of all the instances known to the virtualization
+        """Return the names of all the instances known to the virtualization
         layer, as a list.
         """
         all_instances = self.ec2_conn.get_only_instances()
@@ -217,8 +213,8 @@ class EC2Driver(driver.ComputeDriver):
                 continue
             if len(instance.tags) > 0:
                 if 'openstack_id' in instance.tags:
-                    self._uuid_to_ec2_instance[instance.tags['openstack_id']] = \
-                            instance
+                    self._uuid_to_ec2_instance[
+                        instance.tags['openstack_id']] = instance
                 else:
                     generate_uuid = True
             else:
@@ -238,13 +234,14 @@ class EC2Driver(driver.ComputeDriver):
         pass
 
     def _add_ssh_keys(self, key_name, key_data):
-        """
-        Adds SSH Keys into AWS EC2 account
+        """Adds SSH Keys into AWS EC2 account
+
         :param key_name:
         :param key_data:
         :return:
         """
-        # TODO: Need to handle the cases if a key with the same keyname exists and different key content
+        # TODO(add_ssh_keys): Need to handle the cases if a key with the same
+        # keyname exists and different key content
         exist_key_pair = self.ec2_conn.get_key_pair(key_name)
         if not exist_key_pair:
             LOG.info("Adding SSH key to AWS")
@@ -253,8 +250,8 @@ class EC2Driver(driver.ComputeDriver):
             LOG.info("SSH key already exists in AWS")
 
     def _get_image_ami_id_from_meta(self, context, image_lacking_meta):
-        """
-        Pulls the Image AMI ID from the location attribute of Image Meta
+        """Pulls the Image AMI ID from the location attribute of Image Meta
+
         :param image_meta:
         :return: ami_id
         """
@@ -266,14 +263,17 @@ class EC2Driver(driver.ComputeDriver):
             return image_meta['aws_image_id']
         except Exception as e:
             LOG.error("Error in parsing Image Id: %s" % e)
-            raise exception.BuildAbortException("Invalid or Non-Existent Image ID Error")
+            raise exception.BuildAbortException("Invalid or Non-Existent Image"
+                                                " ID Error")
 
     def _process_network_info(self, network_info):
-        """
-        Will process network_info object by picking up only one Network out of many
+        """Will process network_info object by picking up only one Network out
+        of many
+
         :param network_info:
         :return:
         """
+
         LOG.info("Networks to be processed : %s" % network_info)
         subnet_id = None
         fixed_ip = None
@@ -335,18 +335,20 @@ class EC2Driver(driver.ComputeDriver):
         image_ami_id = self._get_image_ami_id_from_meta(context, image_meta)
 
         subnet_id, fixed_ip, port_id, network_id = self._process_network_info(
-                network_info)
+            network_info)
         if subnet_id is None or fixed_ip is None:
-            raise exception.BuildAbortException("Network configuration failure")
+            raise exception.BuildAbortException("Network configuration "
+                                                "failure")
 
-        security_groups = self._get_instance_sec_grps(context, port_id, network_id)
-
+        security_groups = self._get_instance_sec_grps(context, port_id,
+                                                      network_id)
         # Flavor
         flavor_dict = instance['flavor']
         flavor_type = flavor_dict['name']
 
         # SSH Keys
-        if instance['key_name'] is not None and instance['key_data'] is not None:
+        if (instance['key_name'] is not None and
+                instance['key_data'] is not None):
             self._add_ssh_keys(instance['key_name'], instance['key_data'])
 
         # Creating the EC2 instance
@@ -356,17 +358,17 @@ class EC2Driver(driver.ComputeDriver):
         if 'user_data' in instance and instance['user_data'] is not None:
             user_data = instance['user_data']
             user_data = base64.b64decode(user_data)
-
         try:
             reservation = self.ec2_conn.run_instances(
-                    instance_type=flavor_type, key_name=instance['key_name'],
-                    image_id=image_ami_id, user_data=user_data,
-                    subnet_id=subnet_id, private_ip_address=fixed_ip,
-                    security_group_ids=security_groups)
+                instance_type=flavor_type, key_name=instance['key_name'],
+                image_id=image_ami_id, user_data=user_data,
+                subnet_id=subnet_id, private_ip_address=fixed_ip,
+                security_group_ids=security_groups)
             ec2_instance = reservation.instances
             ec2_instance_obj = ec2_instance[0]
             ec2_id = ec2_instance[0].id
-            self._wait_for_state(instance, ec2_id, "running", power_state.RUNNING)
+            self._wait_for_state(instance, ec2_id, "running",
+                                 power_state.RUNNING)
             instance['metadata'].update({'ec2_id': ec2_id})
             ec2_instance_obj.add_tag("Name", instance['display_name'])
             ec2_instance_obj.add_tag("openstack_id", instance['uuid'])
@@ -377,9 +379,11 @@ class EC2Driver(driver.ComputeDriver):
             if len(instances) > 0:
                 public_ip = instances[0].ip_address
                 if public_ip is not None:
-                    instance['metadata'].update({'public_ip_address': public_ip})
+                    instance['metadata'].update({
+                        'public_ip_address': public_ip})
         except EC2ResponseError as ec2_exception:
-            actual_exception = Ec2ExceptionHandler.get_processed_exception(ec2_exception)
+            actual_exception = Ec2ExceptionHandler.get_processed_exception(
+                ec2_exception)
             LOG.info("Error in starting instance %s" % (actual_exception))
             raise exception.BuildAbortException(actual_exception.message)
 
@@ -390,19 +394,20 @@ class EC2Driver(driver.ComputeDriver):
             return self._uuid_to_ec2_instance[instance.uuid].id
         # if none of the conditions are met we cannot map OpenStack UUID to
         # AWS ID.
-        raise exception.InstanceNotFound('Instance %s not found' % instance.uuid)
-
+        raise exception.InstanceNotFound('Instance {0} not found'.format(
+            instance.uuid))
 
     def snapshot(self, context, instance, image_id, update_task_state):
-        """Snapshot an image of the specified instance
-        on EC2 and create an Image which gets stored in AMI (internally in EBS Snapshot)
+        """Snapshot an image of the specified instance on EC2 and create an
+        Image which gets stored in AMI (internally in EBS Snapshot)
+
         :param context: security context
         :param instance: nova.objects.instance.Instance
-        :param image_id: Reference to a pre-created image that will hold the snapshot.
+        :param image_id: Reference to a pre-created image that will hold the
+        snapshot.
         """
         if instance.metadata.get('ec2_id', None) is None:
             raise exception.InstanceNotFound(instance_id=instance['uuid'])
-
         # Adding the below line only alters the state of the instance and not
         # its image in OpenStack.
         update_task_state(
@@ -418,7 +423,6 @@ class EC2Driver(driver.ComputeDriver):
                 name=str(image_id), description="Image created by OpenStack",
                 no_reboot=False, dry_run=False)
             LOG.info("Image created: %s." % ec2_image_id)
-
         # The instance will be in pending state when it comes up, waiting
         # for it to be in available
         self._wait_for_image_state(ec2_image_id, "available")
@@ -433,8 +437,7 @@ class EC2Driver(driver.ComputeDriver):
                         'image_state': 'available',
                         'owner_id': instance['project_id'],
                         'ramdisk_id': instance['ramdisk_id'],
-                        'ec2_image_id': ec2_image_id }
-                    }
+                        'ec2_image_id': ec2_image_id}}
         # TODO(jhurt): This currently fails, leaving the status of an instance
         #              as 'snapshotting'
         image_api.update(context, image_id, metadata)
@@ -455,7 +458,7 @@ class EC2Driver(driver.ComputeDriver):
         :param reboot_type: Either a HARD or SOFT reboot
         :param block_device_info: Info pertaining to attached volumes
         :param bad_volumes_callback: Function to handle any bad volumes
-            encountered
+        encountered
         """
         if reboot_type == 'SOFT':
             self._soft_reboot(
@@ -464,12 +467,14 @@ class EC2Driver(driver.ComputeDriver):
             self._hard_reboot(
                 context, instance, network_info, block_device_info)
 
-    def _soft_reboot(self, context, instance, network_info, block_device_info=None):
+    def _soft_reboot(self, context, instance, network_info,
+                     block_device_info=None):
         ec2_id = self._get_ec2_id_from_instance(instance)
         self.ec2_conn.reboot_instances(instance_ids=[ec2_id], dry_run=False)
         LOG.info("Soft Reboot Complete.")
 
-    def _hard_reboot(self, context, instance, network_info, block_device_info=None):
+    def _hard_reboot(self, context, instance, network_info,
+                     block_device_info=None):
         self.power_off(instance)
         self.power_on(context, instance, network_info, block_device)
         LOG.info("Hard Reboot Complete.")
@@ -480,9 +485,8 @@ class EC2Driver(driver.ComputeDriver):
         return CONF.my_ip
 
     def set_admin_password(self, instance, new_pass):
-        """
-        Boto doesn't support setting the password at the time of creating an instance.
-        hence not implemented.
+        """Boto doesn't support setting the password at the time of creating an
+        instance, hence not implemented.
         """
         pass
 
@@ -519,14 +523,14 @@ class EC2Driver(driver.ComputeDriver):
         pass
 
     def power_off(self, instance, timeout=0, retry_interval=0):
-        """
-        Power off the specified instance.
+        """Power off the specified instance.
+
         :param instance: nova.objects.instance.Instance
         :param timeout: time to wait for GuestOS to shutdown
         :param retry_interval: How often to signal guest while
                                waiting for it to shutdown
         """
-        # TODO: Need to use timeout and retry_interval
+        # TODO(timeout): Need to use timeout and retry_interval
         ec2_id = self._get_ec2_id_from_instance(instance)
         self.ec2_conn.stop_instances(
             instance_ids=[ec2_id], force=False, dry_run=False)
@@ -546,38 +550,38 @@ class EC2Driver(driver.ComputeDriver):
         pass
 
     def pause(self, instance):
-        """
-        Boto doesn't support pause and cannot save system state and hence
+        """Boto doesn't support pause and cannot save system state and hence
         we've implemented the closest functionality which is to poweroff the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         self.power_off(instance)
 
     def unpause(self, instance):
-        """
-        Since Boto doesn't support pause and cannot save system state, we
+        """Since Boto doesn't support pause and cannot save system state, we
         had implemented the closest functionality which is to poweroff the
         instance. and powering on such an instance in this method.
+
         :param instance: nova.objects.instance.Instance
         """
-        self.power_on(
-            context=None, instance=instance, network_info=None, block_device_info=None)
+        self.power_on(context=None, instance=instance, network_info=None,
+                      block_device_info=None)
 
     def suspend(self, context, instance):
-        """
-        Boto doesn't support suspend and cannot save system state and hence
+        """Boto doesn't support suspend and cannot save system state and hence
         we've implemented the closest functionality which is to poweroff the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         self.power_off(instance)
 
     def resume(self, context, instance, network_info, block_device_info=None):
-        """
-        Since Boto doesn't support suspend and we cannot save system state,
+        """Since Boto doesn't support suspend and we cannot save system state,
         we've implemented the closest functionality which is to power on the
         instance.
+
         :param instance: nova.objects.instance.Instance
         """
         self.power_on(context, instance, network_info, block_device_info)
@@ -603,7 +607,7 @@ class EC2Driver(driver.ComputeDriver):
         try:
             ec2_id = self._get_ec2_id_from_instance(instance)
             ec2_instances = self.ec2_conn.get_only_instances(
-                    instance_ids=[ec2_id])
+                instance_ids=[ec2_id])
         except exception.InstanceNotFound as ex:
             # Exception while fetching instance info from AWS
             LOG.exception('Exception in destroy while fetching EC2 id for '
@@ -625,13 +629,12 @@ class EC2Driver(driver.ComputeDriver):
                                          power_state.SHUTDOWN)
             except Exception as ex:
                 LOG.exception("Exception while destroying instance: %s" %
-                        str(ex))
+                              str(ex))
                 raise ex
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
                       disk_bus=None, device_type=None, encryption=None):
-        """Attach the disk to the instance at mountpoint using info.
-        """
+        """Attach the disk to the instance at mountpoint using info."""
         instance_name = instance['name']
         if instance_name not in self._mounts:
             self._mounts[instance_name] = {}
@@ -644,9 +647,9 @@ class EC2Driver(driver.ComputeDriver):
         self.ec2_conn.attach_volume(volume_id, ec2_id, mountpoint,
                                     dry_run=False)
 
-    def detach_volume(self, connection_info, instance, mountpoint, encryption=None):
-        """Detach the disk attached to the instance.
-        """
+    def detach_volume(self, connection_info, instance, mountpoint,
+                      encryption=None):
+        """Detach the disk attached to the instance."""
         try:
             del self._mounts[instance['name']][mountpoint]
         except KeyError:
@@ -659,21 +662,20 @@ class EC2Driver(driver.ComputeDriver):
 
     def swap_volume(self, old_connection_info, new_connection_info,
                     instance, mountpoint, resize_to):
-        """Replace the disk attached to the instance.
-        """
-        # TODO: Use resize_to parameter
+        """Replace the disk attached to the instance."""
+        # TODO(resize_to): Use resize_to parameter
         instance_name = instance['name']
         if instance_name not in self._mounts:
             self._mounts[instance_name] = {}
         self._mounts[instance_name][mountpoint] = new_connection_info
 
-        old_volume_id = old_connection_info['data']['volume_id']
         new_volume_id = new_connection_info['data']['volume_id']
 
         self.detach_volume(old_connection_info, instance, mountpoint)
         # wait for the old volume to detach successfully to make sure
         # /dev/sdn is available for the new volume to be attached
-        # TODO: remove the sleep and poll AWS for the status of volume
+        # TODO(remove_sleep): remove sleep and poll AWS for the status of
+        # volume
         time.sleep(60)
         ec2_id = self._get_ec2_id_from_instance(instance)
         self.ec2_conn.attach_volume(new_volume_id,
@@ -696,6 +698,7 @@ class EC2Driver(driver.ComputeDriver):
 
     def get_info(self, instance):
         """Get the current status of an instance, by name (not ID!)
+
         :param instance: nova.objects.instance.Instance object
         Returns a dict containing:
         :state:           the running state, one of the power_state codes
@@ -710,11 +713,11 @@ class EC2Driver(driver.ComputeDriver):
         elif 'metadata' in instance and 'ec2_id' in instance['metadata']:
             ec2_id = instance['metadata']['ec2_id']
             ec2_instances = self.ec2_conn.get_only_instances(
-                    instance_ids=[ec2_id], filters=None, dry_run=False,
-                    max_results=None)
+                instance_ids=[ec2_id], filters=None, dry_run=False,
+                max_results=None)
             if len(ec2_instances) == 0:
                 LOG.warning(_("EC2 instance with ID %s not found") % ec2_id,
-                        instance=instance)
+                            instance=instance)
                 raise exception.InstanceNotFound(instance_id=instance['name'])
             ec2_instance = ec2_instances[0]
         else:
@@ -725,13 +728,9 @@ class EC2Driver(driver.ComputeDriver):
         memory_mb = ec2_flavor['memory_mb']
         vcpus = ec2_flavor['vcpus']
 
-        return hardware.InstanceInfo(
-            state=power_state,
-            max_mem_kb=memory_mb,
-            mem_kb=memory_mb,
-            num_cpu=vcpus,
-            cpu_time_ns=0,
-            id=instance.id)
+        return hardware.InstanceInfo(state=power_state, max_mem_kb=memory_mb,
+                                     mem_kb=memory_mb, num_cpu=vcpus,
+                                     cpu_time_ns=0, id=instance.id)
 
     def allow_key(self, key):
         for key_to_filter in DIAGNOSTIC_KEYS_TO_FILTER:
@@ -743,13 +742,12 @@ class EC2Driver(driver.ComputeDriver):
         """Return data about VM diagnostics."""
 
         ec2_id = self._get_ec2_id_from_instance(instance)
-        ec2_instances = self.ec2_conn.get_only_instances(instance_ids=[ec2_id],
-                                                         filters=None,
-                                                         dry_run=False,
-                                                         max_results=None)
+        ec2_instances = self.ec2_conn.get_only_instances(
+            instance_ids=[ec2_id], filters=None, dry_run=False,
+            max_results=None)
         if len(ec2_instances) == 0:
             LOG.warning(_("EC2 instance with ID %s not found") % ec2_id,
-                    instance=instance)
+                        instance=instance)
             raise exception.InstanceNotFound(instance_id=instance['name'])
         ec2_instance = ec2_instances[0]
 
@@ -758,7 +756,8 @@ class EC2Driver(driver.ComputeDriver):
             if self.allow_key(key):
                 diagnostics['instance.' + key] = str(value)
 
-        metrics = self.cloudwatch_conn.list_metrics(dimensions={'InstanceId': ec2_id})
+        metrics = self.cloudwatch_conn.list_metrics(
+            dimensions={'InstanceId': ec2_id})
 
         for metric in metrics:
             end = datetime.datetime.utcnow()
@@ -766,7 +765,6 @@ class EC2Driver(driver.ComputeDriver):
             details = metric.query(start, end, 'Average', None, 3600)
             if len(details) > 0:
                 diagnostics['metrics.' + str(metric)] = details[0]
-
         return diagnostics
 
     def get_all_bw_counters(self, instances):
@@ -804,7 +802,8 @@ class EC2Driver(driver.ComputeDriver):
                         if instance.ip_address is not None:
                             host_ip = instance.ip_address
         if host_ip is not None:
-            LOG.info("Found the IP of the instance IP:%s and port:%s" % (host_ip, vnc_port))
+            LOG.info("Found the IP of the instance IP:%s and port:%s" % (
+                host_ip, vnc_port))
             return ctype.ConsoleVNC(host=host_ip, port=vnc_port)
         else:
             LOG.info("Ip not Found for the instance")
@@ -813,10 +812,9 @@ class EC2Driver(driver.ComputeDriver):
                     'port': 5901}
 
     def get_spice_console(self, instance):
-        """ Simple Protocol for Independent Computing Environments
+        """Simple Protocol for Independent Computing Environments
         Doesn't seem to be supported by AWS EC2 directly
         """
-
         return {'internal_access_path': 'EC2',
                 'host': 'EC2spiceconsole.com',
                 'port': 6969,
@@ -833,13 +831,17 @@ class EC2Driver(driver.ComputeDriver):
     def get_available_resource(self, nodename):
         """Retrieve resource information.
         Updates compute manager resource info on ComputeNode table.
-        This method is called when nova-compute launches and as part of a periodic task that records results in the DB.
-        Since we don't have a real hypervisor, pretend we have lots of disk and ram.
+        This method is called when nova-compute launches and as part of a
+        periodic task that records results in the DB.
+        Since we don't have a real hypervisor, pretend we have lots of disk and
+        ram.
+
         :param nodename:
             node which the caller want to get resources from
             a driver that manages only one node can safely ignore this
         :returns: Dictionary describing resources
         """
+        global _EC2_NODES
         if nodename not in _EC2_NODES:
             return {}
 
@@ -891,29 +893,35 @@ class EC2Driver(driver.ComputeDriver):
                          network_info, image_meta, resize_instance,
                          block_device_info=None, power_on=True):
         """Completes a resize
+
         :param migration: the migrate/resize information
         :param instance: nova.objects.instance.Instance being migrated/resized
         :param power_on: is True  the instance should be powered on
         """
         ec2_id = self._get_ec2_id_from_instance(instance)
         ec_instance_info = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False, max_results=None)
+            instance_ids=[ec2_id], filters=None, dry_run=False,
+            max_results=None)
         ec2_instance = ec_instance_info[0]
 
-        # EC2 instance needs to be stopped to modify it's attribute. So we stop the instance,
-        # modify the instance type in this case, and then restart the instance.
+        # EC2 instance needs to be stopped to modify it's attribute. So we stop
+        # the instance, modify the instance type in this case, and then restart
+        # the instance.
         ec2_instance.stop()
         self._wait_for_state(instance, ec2_id, "stopped", power_state.SHUTDOWN)
-        new_instance_type = flavor_map[migration['new_instance_type_id']]
+        # TODO(flavor_map is undefined): need to check flavor type variable
+        new_instance_type = flavor_map[migration['new_instance_type_id']]  # noqa
         ec2_instance.modify_attribute('instanceType', new_instance_type)
 
     def confirm_migration(self, migration, instance, network_info):
         """Confirms a resize, destroying the source VM.
+
         :param instance: nova.objects.instance.Instance
         """
         ec2_id = self._get_ec2_id_from_instance(instance)
         ec_instance_info = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False, max_results=None)
+            instance_ids=[ec2_id], filters=None, dry_run=False,
+            max_results=None)
         ec2_instance = ec_instance_info[0]
         ec2_instance.start()
         self._wait_for_state(instance, ec2_id, "running", power_state.RUNNING)
@@ -928,6 +936,7 @@ class EC2Driver(driver.ComputeDriver):
     def get_host_stats(self, refresh=False):
         """Return EC2 Host Status of name, ram, disk, network."""
         stats = []
+        global _EC2_NODES
         for nodename in _EC2_NODES:
             host_status = self.host_status_base.copy()
             host_status['hypervisor_hostname'] = nodename
@@ -976,6 +985,7 @@ class EC2Driver(driver.ComputeDriver):
         return {'ip': '127.0.0.1', 'initiator': 'EC2', 'host': 'EC2host'}
 
     def get_available_nodes(self, refresh=False):
+        global _EC2_NODES
         return _EC2_NODES
 
     def instance_on_disk(self, instance):
@@ -997,8 +1007,8 @@ class EC2Driver(driver.ComputeDriver):
                 continue
             if len(instance.tags) > 0:
                 if 'openstack_id' in instance.tags:
-                    self._uuid_to_ec2_instance[instance.tags['openstack_id']] = \
-                            instance
+                    self._uuid_to_ec2_instance[
+                        instance.tags['openstack_id']] = instance
                 else:
                     # Possibly a new discovered instance
                     generate_uuid = True
@@ -1010,15 +1020,19 @@ class EC2Driver(driver.ComputeDriver):
                 self._uuid_to_ec2_instance[instance_uuid] = instance
         return self._uuid_to_ec2_instance.keys()
 
-    def _wait_for_state(self, instance, ec2_id, desired_state, desired_power_state):
-        """Wait for the state of the corrosponding ec2 instance to be in completely available state.
+    def _wait_for_state(self, instance, ec2_id, desired_state,
+                        desired_power_state):
+        """Wait for the state of the corrosponding ec2 instance to be in
+        completely available state.
+
         :params:ec2_id: the instance's corrosponding ec2 id.
         :params:desired_state: the desired state of the instance to be in.
         """
         def _wait_for_power_state():
             """Called at an interval until the VM is running again.
             """
-            ec2_instance = self.ec2_conn.get_only_instances(instance_ids=[ec2_id])
+            ec2_instance = self.ec2_conn.get_only_instances(
+                instance_ids=[ec2_id])
 
             state = ec2_instance[0].state
             if state == desired_state:
@@ -1026,28 +1040,33 @@ class EC2Driver(driver.ComputeDriver):
                 raise loopingcall.LoopingCallDone()
 
         def _wait_for_status_check():
-            """Power state of a machine might be ON, but status check is the one which gives the real
+            """Power state of a machine might be ON, but status check is the
+            one which gives the real
             """
-            ec2_instance = self.ec2_conn.get_all_instance_status(instance_ids=[ec2_id])[0]
+            ec2_instance = self.ec2_conn.get_all_instance_status(
+                instance_ids=[ec2_id])[0]
             if ec2_instance.system_status.status == 'ok':
                 LOG.info("Instance status check is %s / %s" %
-                         (ec2_instance.system_status.status, ec2_instance.instance_status.status))
+                         (ec2_instance.system_status.status,
+                          ec2_instance.instance_status.status))
                 raise loopingcall.LoopingCallDone()
 
-        #waiting for the power state to change
+        # waiting for the power state to change
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_power_state)
         timer.start(interval=1).wait()
 
     def _wait_for_image_state(self, ami_id, desired_state):
         """Timer to wait for the image/snapshot to reach a desired state
+
         :params:ami_id: correspoding image id in Amazon
         :params:desired_state: the desired new state of the image to be in.
         """
         def _wait_for_state():
             """Called at an interval until the AMI image is available."""
             try:
-                images = self.ec2_conn.get_all_images(image_ids=[ami_id], owners=None,
-                                                      executable_by=None, filters=None, dry_run=None)
+                images = self.ec2_conn.get_all_images(
+                    image_ids=[ami_id], owners=None,
+                    executable_by=None, filters=None, dry_run=None)
                 state = images[0].state
                 if state == desired_state:
                     LOG.info("Image has changed state to %s." % desired_state)
