@@ -1,16 +1,15 @@
-# Copyright (c) 2017 Platform9 Systems Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright (c) 2017 Platform9 Systems Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
 import time
 
@@ -71,6 +70,7 @@ if not hasattr(loopingcall, 'FixedIntervalWithTimeoutLoopingCall'):
 
 def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     """Wait for GCE operation to complete, raise error if operation failure
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -108,6 +108,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
 
 def get_gce_service(service_key):
     """Returns GCE compute resource object for interacting with GCE API
+
     :param service_key: string, Path of service key obtained from
         https://console.cloud.google.com/apis/credentials
     :return: :class:`Resource <Resource>` object
@@ -120,6 +121,7 @@ def get_gce_service(service_key):
 
 def create_disk(compute, project, zone, name, size):
     """Create disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -140,6 +142,7 @@ def create_disk(compute, project, zone, name, size):
 
 def delete_disk(compute, project, zone, name):
     """Delete disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -153,6 +156,7 @@ def delete_disk(compute, project, zone, name):
 
 def get_disk(compute, project, zone, name):
     """Get info of disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -165,6 +169,7 @@ def get_disk(compute, project, zone, name):
 
 def snapshot_disk(compute, project, zone, name, snapshot_name):
     """Create snapshot of disk in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -180,6 +185,7 @@ def snapshot_disk(compute, project, zone, name, snapshot_name):
 
 def get_snapshot(compute, project, name):
     """Get info of snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE snapshot name
@@ -191,6 +197,7 @@ def get_snapshot(compute, project, name):
 
 def delete_snapshot(compute, project, name):
     """Delete snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE snapshot name
@@ -202,6 +209,7 @@ def delete_snapshot(compute, project, name):
 
 def create_disk_from_snapshot(compute, project, zone, name, snapshot_name):
     """Create disk from snapshot in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
