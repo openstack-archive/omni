@@ -1,27 +1,23 @@
-# Copyright (c) 2017 Platform9 Systems Inc. (http://www.platform9.com)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-'''
-1. Source openstack RC file
-2. python create-nova-flavors-gce.py <service_key_path> <project> <zone>
-'''
+"""
+Copyright (c) 2017 Platform9 Systems Inc. (http://www.platform9.com)
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 import os
 import sys
-import gceutils
 
+from gce import gceutils
+from keystoneauth1 import loading
+from keystoneauth1 import session
 from novaclient import client as nova_client
-from keystoneauth1 import loading, session
 
 
 def get_env_param(env_name):
@@ -42,7 +38,8 @@ def get_keystone_session(
 
     if not project_name:
         if not tenant_name:
-            raise Exception("Either OS_PROJECT_NAME or OS_TENANT_NAME is required.")
+            raise Exception("Either OS_PROJECT_NAME or OS_TENANT_NAME is "
+                            "required.")
         project_name = tenant_name
 
     loader = loading.get_plugin_loader('password')
@@ -78,7 +75,8 @@ class GceFlavors(object):
 
 if __name__ == '__main__':
     if len(sys.argv) != 4:
-        print('Usage: {0} <service_key_path> <project> <zone>'.format(sys.argv[0]))
+        print('Usage: {0} <service_key_path> <project> <zone>'.format(
+            sys.argv[0]))
         sys.exit(1)
     gce_flavors = GceFlavors(sys.argv[1], sys.argv[2], sys.argv[3])
     gce_flavors.register_gce_flavors()
