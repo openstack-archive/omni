@@ -1,28 +1,26 @@
-# Copyright (c) 2017 Platform9 Systems Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright (c) 2017 Platform9 Systems Inc.
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
-import uuid
 import time
+import uuid
 
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from oauth2client.client import GoogleCredentials
 from oslo_log import log as logging
 from oslo_utils import reflection
 
-from neutron_lib import exceptions as e
 from neutron._i18n import _
+from neutron_lib import exceptions as e
 from oslo_service import loopingcall
 from six.moves import urllib
 
@@ -66,7 +64,7 @@ class _FixedIntervalWithTimeoutLoopingCall(loopingcall.LoopingCallBase):
 # definition _FixedIntervalWithTimeoutLoopingCall
 if not hasattr(loopingcall, 'FixedIntervalWithTimeoutLoopingCall'):
     loopingcall.FixedIntervalWithTimeoutLoopingCall = \
-            _FixedIntervalWithTimeoutLoopingCall
+        _FixedIntervalWithTimeoutLoopingCall
 
 
 class GceOperationError(Exception):
@@ -79,6 +77,7 @@ class GceResourceNotFound(e.NotFound):
 
 def list_instances(compute, project, zone):
     """Returns list of GCE instance resources for specified project
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -93,6 +92,7 @@ def list_instances(compute, project, zone):
 
 def get_instance(compute, project, zone, instance):
     """Get GCE instance information
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -107,6 +107,7 @@ def get_instance(compute, project, zone, instance):
 
 def wait_for_operation(compute, project, operation, interval=1, timeout=60):
     """Wait for GCE operation to complete, raise error if operation failure
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE Name of zone
@@ -144,6 +145,7 @@ def wait_for_operation(compute, project, operation, interval=1, timeout=60):
 
 def get_gce_service(service_key):
     """Returns GCE compute resource object for interacting with GCE API
+
     :param service_key: string, Path of service key obtained from
         https://console.cloud.google.com/apis/credentials
     :return: :class:`Resource <Resource>` object
@@ -156,6 +158,7 @@ def get_gce_service(service_key):
 
 def create_network(compute, project, name):
     """Create network in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE Name of network
@@ -168,6 +171,7 @@ def create_network(compute, project, name):
 
 def get_network(compute, project, name):
     """Get info of network in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE Name of network
@@ -180,6 +184,7 @@ def get_network(compute, project, name):
 
 def create_subnet(compute, project, region, name, ipcidr, network_link):
     """Create subnet with particular GCE network
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -201,6 +206,7 @@ def create_subnet(compute, project, region, name, ipcidr, network_link):
 
 def delete_subnet(compute, project, region, name):
     """Delete subnet in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -214,6 +220,7 @@ def delete_subnet(compute, project, region, name):
 
 def delete_network(compute, project, name):
     """Delete network in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE network name
@@ -225,6 +232,7 @@ def delete_network(compute, project, name):
 
 def create_static_ip(compute, project, region, name):
     """Create global static IP
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -239,6 +247,7 @@ def create_static_ip(compute, project, region, name):
 
 def get_static_ip(compute, project, region, name):
     """Get static IP
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -252,6 +261,7 @@ def get_static_ip(compute, project, region, name):
 
 def delete_static_ip(compute, project, region, name):
     """Delete static IP
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -265,6 +275,7 @@ def delete_static_ip(compute, project, region, name):
 
 def get_floatingip(compute, project, region, ip):
     """Get details of static IP in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -283,6 +294,7 @@ def get_floatingip(compute, project, region, ip):
 
 def allocate_floatingip(compute, project, region):
     """Get global static IP in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -298,6 +310,7 @@ def allocate_floatingip(compute, project, region):
 
 def delete_floatingip(compute, project, region, ip):
     """Delete particular static IP
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param region: string, GCE region
@@ -311,6 +324,7 @@ def delete_floatingip(compute, project, region, ip):
 
 def assign_floatingip(compute, project, zone, fixedip, floatingip):
     """Assign static IP to interface with mentioned fixed IP
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE zone
@@ -344,6 +358,7 @@ def assign_floatingip(compute, project, zone, fixedip, floatingip):
 
 def release_floatingip(compute, project, zone, floatingip):
     """Release GCE static IP from instances using it
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param zone: string, GCE zone
@@ -376,10 +391,13 @@ def release_floatingip(compute, project, zone, floatingip):
 
 def create_firewall_rule(compute, project, body):
     """Create firewall rule in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param body: dict, Information required for creating firewall
-        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#insert
+    Refer format at
+    https://developers.google.com/resources/api-libraries/documentation/compute
+    /beta/python/latest/compute_beta.firewalls.html#insert
     :return: Operation information
     :rtype: dict
     """
@@ -388,11 +406,14 @@ def create_firewall_rule(compute, project, body):
 
 def update_firewall_rule(compute, project, name, body):
     """Update existing firewall rule in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE firewall name
     :param body: dict, Information required for updating firewall
-        Refer format at https://developers.google.com/resources/api-libraries/documentation/compute/beta/python/latest/compute_beta.firewalls.html#update
+    Refer format at
+    https://developers.google.com/resources/api-libraries/documentation/
+    compute/beta/python/latest/compute_beta.firewalls.html#update
     :return: Operation information
     :rtype: dict
     """
@@ -402,6 +423,7 @@ def update_firewall_rule(compute, project, name, body):
 
 def delete_firewall_rule(compute, project, name):
     """Delete firewall rule in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE firewall name
@@ -413,6 +435,7 @@ def delete_firewall_rule(compute, project, name):
 
 def get_firewall_rule(compute, project, name):
     """Get firewall rule info in GCE
+
     :param compute: GCE compute resource object using googleapiclient.discovery
     :param project: string, GCE Project Id
     :param name: string, GCE firewall name

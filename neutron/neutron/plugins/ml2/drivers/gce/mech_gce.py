@@ -1,32 +1,31 @@
-# Copyright 2017 Platform9 Systems Inc.(http://www.platform9.com)
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright 2017 Platform9 Systems Inc.(http://www.platform9.com)
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
 import random
 
-from oslo_log import log
-
-import ipaddr
 from neutron._i18n import _
 from neutron.callbacks import events
 from neutron.callbacks import registry
 from neutron.callbacks import resources
 from neutron.common import gceconf
 from neutron.common import gceutils
+from neutron.extensions import securitygroup as sg
 from neutron.manager import NeutronManager
 from neutron.plugins.ml2 import driver_api as api
-from neutron.extensions import securitygroup as sg
 from neutron_lib import exceptions as e
+from oslo_log import log
+
+import ipaddr
 try:
     from neutron_lib.plugins import directory
 except ImportError:
@@ -110,7 +109,9 @@ class GceMechanismDriver(api.MechanismDriver):
         pass
 
     def create_subnet_postcommit(self, context):
-        compute, project, region = self.gce_svc, self.gce_project, self.gce_region
+        compute = self.gce_svc
+        project = self.gce_project
+        region = self.gce_region
         network_name = self._gce_subnet_network_name(context)
         name = self._gce_subnet_name(context)
         cidr = context.current['cidr']
@@ -132,7 +133,9 @@ class GceMechanismDriver(api.MechanismDriver):
         pass
 
     def delete_subnet_postcommit(self, context):
-        compute, project, region = self.gce_svc, self.gce_project, self.gce_region
+        compute = self.gce_svc
+        project = self.gce_project
+        region = self.gce_region
         cidr = context.current['cidr']
         if self.is_private_network(cidr):
             name = self._gce_subnet_name(context)

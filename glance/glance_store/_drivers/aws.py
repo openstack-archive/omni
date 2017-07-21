@@ -1,30 +1,25 @@
-# Copyright (c) 2016 Platform9 Systems Inc. (http://www.platform9.com)
-#
-#    Licensed under the Apache License, Version 2.0 (the "License"); you may
-#    not use this file except in compliance with the License. You may obtain
-#    a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-#    Unless required by applicable law or agreed to in writing, software
-#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-#    License for the specific language governing permissions and limitations
-#    under the License.
+"""
+Copyright (c) 2016 Platform9 Systems Inc. (http://www.platform9.com)
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+"""
 
 import logging
-import socket
-
-from six.moves import http_client
-from six.moves import urllib
-from oslo_config import cfg
-from ConfigParser import ConfigParser
 
 from glance_store import capabilities
+import glance_store.driver
 from glance_store import exceptions
 from glance_store.i18n import _
-import glance_store.driver
 import glance_store.location
+from oslo_config import cfg
+from six.moves import urllib
 
 import boto3
 import botocore.exceptions
@@ -35,11 +30,10 @@ MAX_REDIRECTS = 5
 STORE_SCHEME = 'aws'
 
 aws_opts_group = cfg.OptGroup(name='aws', title='AWS specific options')
-aws_opts = [
-             cfg.StrOpt('access_key', help='AWS access key ID'),
-             cfg.StrOpt('secret_key', help='AWS secret access key'),
-             cfg.StrOpt('region_name', help='AWS region name'),
-]
+aws_opts = [cfg.StrOpt('access_key', help='AWS access key ID'),
+            cfg.StrOpt('secret_key', help='AWS secret access key'),
+            cfg.StrOpt('region_name', help='AWS region name')]
+
 
 class StoreLocation(glance_store.location.StoreLocation):
 
@@ -85,7 +79,7 @@ class Store(glance_store.driver.Store):
     def __init__(self, conf):
         super(Store, self).__init__(conf)
         conf.register_group(aws_opts_group)
-        conf.register_opts(aws_opts, group = aws_opts_group)
+        conf.register_opts(aws_opts, group=aws_opts_group)
         self.credentials = {}
         self.credentials['aws_access_key_id'] = conf.aws.access_key
         self.credentials['aws_secret_access_key'] = conf.aws.secret_key
@@ -102,7 +96,6 @@ class Store(glance_store.driver.Store):
         if self.__ec2_resource is None:
             self.__ec2_resource = boto3.resource('ec2', **self.credentials)
         return self.__ec2_resource
-
 
     @capabilities.check
     def get(self, location, offset=0, chunk_size=None, context=None):
@@ -133,14 +126,12 @@ class Store(glance_store.driver.Store):
                 LOG.warn('**** ID of ami being deleted: {}'.format(ami_id))
                 aws_client.deregister_image(ImageId=ami_id)
 
-
     def get_schemes(self):
         """
         :retval tuple: containing valid scheme names to
                 associate with this store driver
         """
         return ('aws',)
-
 
     def get_size(self, location, context=None):
         """
@@ -169,5 +160,6 @@ class Store(glance_store.driver.Store):
             if ce.response['Error']['Code'] == 'InvalidAMIID.NotFound':
                 raise exceptions.ImageDataNotFound()
             else:
-                raise exceptions.GlanceStoreException(ce.response['Error']['Code'])
+                raise exceptions.GlanceStoreException(
+                    ce.response['Error']['Code'])
         return size
