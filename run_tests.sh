@@ -83,8 +83,8 @@ copy_glance_files
 copy_neutron_files
 
 echo "============Running tests============"
-run_tests cinder "$GCE_TEST" &
-run_tests nova "$GCE_TEST" &
+run_tests cinder "$GCE_TEST $AWS_TEST" &
+run_tests nova "$GCE_TEST $AWS_TEST" &
 run_tests glance_store "$GCE_TEST" &
 run_tests neutron "$GCE_TEST" &
 wait
