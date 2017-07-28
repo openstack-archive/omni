@@ -10,17 +10,19 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 License for the specific language governing permissions and limitations
 under the License.
 """
-
-import gceutils
-import glance_store.driver
-import glance_store.location
 import logging
+import os
 
-from glance_store import capabilities
-from glance_store import exceptions
-from glance_store.i18n import _
+from googleapiclient.errors import HttpError
 from oslo_config import cfg
 from oslo_utils import units
+
+import gceutils
+from glance_store import capabilities
+import glance_store.driver
+from glance_store import exceptions
+from glance_store.i18n import _
+import glance_store.location
 from six.moves import urllib
 
 LOG = logging.getLogger(__name__)
@@ -28,12 +30,12 @@ LOG = logging.getLogger(__name__)
 MAX_REDIRECTS = 5
 STORE_SCHEME = 'gce'
 
-gce_group = cfg.OptGroup(name='GCE',
-                         title='Options to connect to Google cloud')
+gce_group = cfg.OptGroup(
+    name='GCE', title='Options to connect to Google cloud')
 
 gce_opts = [
-    cfg.StrOpt('service_key_path', help='Service key of GCE account',
-               secret=True),
+    cfg.StrOpt(
+        'service_key_path', help='Service key of GCE account', secret=True),
     cfg.StrOpt('zone', help='GCE region'),
     cfg.StrOpt('project_id', help='GCE project id'),
 ]
@@ -88,7 +90,7 @@ class Store(glance_store.driver.Store):
         self.gce_zone = conf.GCE.zone
         self.gce_project = conf.GCE.project_id
         self.gce_svc_key = conf.GCE.service_key_path
-        self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
+        self._gce_svc = None
         LOG.info('Initialized GCE Glance Store driver')
 
     def get_schemes(self):
@@ -97,6 +99,12 @@ class Store(glance_store.driver.Store):
                 associate with this store driver
         """
         return ('gce', )
+
+    @property
+    def gce_svc(self):
+        if self._gce_svc is None and os.path.exists(self.gce_svc_key):
+            self._gce_svc = gceutils.get_gce_service(self.gce_svc_key)
+        return self._gce_svc
 
     @capabilities.check
     def get(self, location, offset=0, chunk_size=None, context=None):
@@ -119,11 +127,19 @@ class Store(glance_store.driver.Store):
                         from glance_store.location.get_location_from_uri()
         :retval int: size of image file in bytes
         """
-        img_data = gceutils.get_image(self.gce_svc,
-                                      location.store_location.gce_project,
-                                      location.store_location.gce_id)
-        img_size = int(img_data['diskSizeGb']) * units.Gi
-        return img_size
+        gce_svc = self.gce_svc
+        if not gce_svc:
+            # GCE service is unavailable can't determine image size
+            return 0
+
+        try:
+            img_data = gceutils.get_image(self.gce_svc,
+                                          location.store_location.gce_project,
+                                          location.store_location.gce_id)
+            img_size = int(img_data['diskSizeGb']) * units.Gi
+            return img_size
+        except HttpError:
+            raise exceptions.NotFound(image=location.store_location.gce_id)
 
     @capabilities.check
     def add(self, image_id, image_file, image_size, context=None,

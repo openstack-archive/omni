@@ -28,9 +28,7 @@ DATA_DIR = os.path.dirname(os.path.abspath(__file__)) + '/data'
 
 
 class GCEGlanceTestCase(base.StoreBaseTest):
-    @mock.patch('glance_store._drivers.gceutils.get_gce_service')
-    def setUp(self, mock_service):
-        mock_service.side_effect = gce_mock.get_gce_service
+    def setUp(self):
         super(GCEGlanceTestCase, self).setUp()
         self.store = Store(cfg.CONF)
         self.store.gce_zone = 'us-central1-c'
@@ -38,7 +36,9 @@ class GCEGlanceTestCase(base.StoreBaseTest):
         self.store.gce_svc_key = "{0}/omni.json".format(DATA_DIR)
 
     @mock.patch('glance_store._drivers.gceutils.get_image')
-    def test_get_size(self, mock_get):
+    @mock.patch('glance_store._drivers.gceutils.get_gce_service')
+    def test_get_size(self, mock_service, mock_get):
+        mock_service.side_effect = gce_mock.get_gce_service
         mock_get.side_effect = gce_mock.get_image
         store_specs = {
             'gce_project': 'omni-163105',
