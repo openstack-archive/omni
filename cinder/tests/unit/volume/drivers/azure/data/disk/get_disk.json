@@ -1,0 +1,15 @@
+{
+    "disk_size_gb": 10,
+    "account_type": <StorageAccountTypes.standard_lrs: "Standard_LRS">,
+    "name": "volume1",
+    "tags": null,
+    "creation_data": <azure.mgmt.compute.compute.v2016_04_30_preview.models.creation_data.CreationData object at 0x7f420dcae7d0>,
+    "time_created": datetime.datetime(2017, 8, 2, 10, 40, 38, 819179, tzinfo = <FixedOffset "+00:00">),
+    "provisioning_state": "Succeeded",
+    "location": "eastus",
+    "os_type": null,
+    "type": "Microsoft.Compute/disks",
+    "id": "/subscriptions/e6cefc59-5a84-4aa3-813f-142adfc86d49/resourceGroups/omni/providers/Microsoft.Compute/disks/volume1",
+    "encryption_settings": null,
+    "owner_id": null
+}
