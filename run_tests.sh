@@ -24,6 +24,7 @@ WORKSPACE=$(pwd)
 DIRECTORY="$WORKSPACE/openstack"
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
+AWS_NOVA_TEST="test_ec2.EC2DriverTestCase"
 declare -A results
 declare -i fail
 declare -i pass
@@ -83,8 +84,8 @@ copy_glance_files
 copy_neutron_files
 
 echo "============Running tests============"
-run_tests cinder "$GCE_TEST" &
-run_tests nova "$GCE_TEST" &
+run_tests cinder "$GCE_TEST|$AWS_TEST" &
+run_tests nova "$GCE_TEST|$AWS_NOVA_TEST" &
 run_tests glance_store "$GCE_TEST" &
 run_tests neutron "$GCE_TEST" &
 wait
