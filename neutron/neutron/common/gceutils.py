@@ -11,6 +11,7 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
+import os
 import time
 import uuid
 
@@ -73,6 +74,10 @@ class GceOperationError(Exception):
 
 class GceResourceNotFound(e.NotFound):
     message = _("GCE Resource %(name)s %(identifier)s was not found")
+
+
+class GceServiceKeyNotFound(e.NotFound):
+    message = _("GCE service key was not found at %(path)s location")
 
 
 def list_instances(compute, project, zone):
@@ -151,6 +156,9 @@ def get_gce_service(service_key):
     :return: :class:`Resource <Resource>` object
     :rtype: googleapiclient.discovery.Resource
     """
+    if not os.path.exists(service_key):
+        raise GceServiceKeyNotFound(path=service_key)
+
     credentials = GoogleCredentials.from_stream(service_key)
     service = build('compute', 'v1', credentials=credentials)
     return service

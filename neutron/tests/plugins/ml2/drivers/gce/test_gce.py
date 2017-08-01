@@ -35,10 +35,13 @@ else:
 
 
 class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
-    @mock.patch('neutron.common.gceutils.get_gce_service')
-    def setUp(self, mock_service):
-        mock_service.side_effect = gce_mock.get_gce_service
+    def setUp(self):
         super(GCENeutronTestCase, self).setUp()
+        self.service_patcher = mock.patch(
+            'neutron.common.gceutils.get_gce_service').start()
+        mock_service = self.service_patcher.start()
+        mock_service.side_effect = gce_mock.get_gce_service
+        self.addCleanup(self.service_patcher.stop)
         self._driver = GceMechanismDriver()
         self._driver.gce_zone = 'us-central1-c'
         self._driver.gce_region = 'us-central1'
