@@ -25,6 +25,7 @@ DIRECTORY="$WORKSPACE/openstack"
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
 AWS_NOVA_TEST="test_ec2.EC2DriverTestCase"
+AZURE_TEST="test_azure"
 declare -A results
 declare -i fail
 declare -i pass
