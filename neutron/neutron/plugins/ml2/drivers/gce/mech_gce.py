@@ -48,12 +48,18 @@ class GceMechanismDriver(api.MechanismDriver):
         self.gce_region = gceconf.region
         self.gce_project = gceconf.project_id
         self.gce_svc_key = gceconf.service_key_path
+        self._gce_svc = None
 
     def initialize(self):
-        self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
         LOG.info("GCE Mechanism driver init with %s project, %s region" %
                  (self.gce_project, self.gce_region))
         self._subscribe_events()
+
+    @property
+    def gce_svc(self):
+        if self._gce_svc is None:
+            self._gce_svc = gceutils.get_gce_service(self.gce_svc_key)
+        return self._gce_svc
 
     def _subscribe_events(self):
         registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,

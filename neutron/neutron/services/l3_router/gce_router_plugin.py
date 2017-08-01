@@ -75,9 +75,15 @@ class GceRouterPlugin(
         self.gce_region = gceconf.region
         self.gce_project = gceconf.project_id
         self.gce_svc_key = gceconf.service_key_path
-        self.gce_svc = gceutils.get_gce_service(self.gce_svc_key)
+        self._gce_svc = None
         LOG.info("GCE Router plugin init with %s project, %s region" %
                  (self.gce_project, self.gce_region))
+
+    @property
+    def gce_svc(self):
+        if self._gce_svc is None:
+            self._gce_svc = gceutils.get_gce_service(self.gce_svc_key)
+        return self._gce_svc
 
     def get_plugin_type(self):
         return plugin_type
