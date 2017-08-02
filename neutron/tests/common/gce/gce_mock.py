@@ -55,6 +55,10 @@ def delete_anything(*args, **kwargs):
     return fake_operation()
 
 
+def return_nothing(*args, **kwargs):
+    pass
+
+
 class FakeNeutronManager(object):
 
     def get_security_group_rule(self, context, rule_id):
