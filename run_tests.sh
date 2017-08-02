@@ -48,9 +48,10 @@ copy_nova_files() {
 copy_neutron_files() {
     cp -R $WORKSPACE/neutron/neutron/common/ $DIRECTORY/neutron/neutron/
     cp -R $WORKSPACE/neutron/neutron/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/plugins/ml2/
-    cp $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/neutron/neutron/services/l3_router/
+    cp -R $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/neutron/neutron/services/l3_router/
     cp -R $WORKSPACE/neutron/tests/common/ $DIRECTORY/neutron/neutron/tests/
     cp -R $WORKSPACE/neutron/tests/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/tests/unit/plugins/ml2/
+    cp -R $WORKSPACE/neutron/tests/services/l3_router/* $DIRECTORY/neutron/neutron/tests/unit/services/l3_router/
 }
 
 run_tests() {
