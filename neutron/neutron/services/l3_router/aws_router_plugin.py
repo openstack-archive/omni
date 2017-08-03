@@ -11,9 +11,12 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
+import neutron_lib
+
+from distutils.version import LooseVersion
+from neutron.common.aws_utils import AwsException
 from neutron.common.aws_utils import AwsUtils
 from neutron.common import constants as n_const
-from neutron.common import exceptions
 from neutron.db import common_db_mixin
 from neutron.db import extraroute_db
 from neutron.db import l3_db
@@ -21,17 +24,29 @@ from neutron.db import l3_dvrscheduler_db
 from neutron.db import l3_gwmode_db
 from neutron.db import l3_hamode_db
 from neutron.db import l3_hascheduler_db
-from neutron.db import securitygroups_db
 from neutron.plugins.common import constants
 from neutron.quota import resource_registry
 from neutron.services import service_base
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
+if LooseVersion(neutron_lib.__version__) < LooseVersion("1.0.0"):
+    router = l3_db.Router
+    floating_ip = l3_db.FloatingIP
+    plugin_type = constants.L3_ROUTER_NAT
+    service_plugin_class = service_base.ServicePluginBase
+else:
+    from neutron.db.models import l3
+    from neutron_lib.plugins import constants as plugin_constants
+    from neutron_lib.services import base
+    router = l3.Router
+    floating_ip = l3.FloatingIP
+    plugin_type = plugin_constants.L3
+    service_plugin_class = base.ServicePluginBase
 
 
 class AwsRouterPlugin(
-        service_base.ServicePluginBase, common_db_mixin.CommonDbMixin,
+        service_plugin_class, common_db_mixin.CommonDbMixin,
         extraroute_db.ExtraRoute_db_mixin, l3_hamode_db.L3_HA_NAT_db_mixin,
         l3_gwmode_db.L3_NAT_db_mixin, l3_dvrscheduler_db.L3_DVRsch_db_mixin,
         l3_hascheduler_db.L3_HA_scheduler_db_mixin):
@@ -50,15 +65,14 @@ class AwsRouterPlugin(
     ]
 
     @resource_registry.tracked_resources(
-        router=l3_db.Router, floatingip=l3_db.FloatingIP,
-        security_group=securitygroups_db.SecurityGroup)
+        router=router, floatingip=floating_ip)
     def __init__(self):
         self.aws_utils = AwsUtils()
         super(AwsRouterPlugin, self).__init__()
         l3_db.subscribe()
 
     def get_plugin_type(self):
-        return constants.L3_ROUTER_NAT
+        return plugin_type
 
     def get_plugin_description(self):
         """returns string description of the plugin."""
@@ -128,7 +142,7 @@ class AwsRouterPlugin(
                                                       ec2_id))
         else:
             LOG.warning("EC2 ID not found to associate the floating IP")
-            raise exceptions.AwsException(
+            raise AwsException(
                 error_code="No Server Found",
                 message="No server found with the Required IP")
 
@@ -149,7 +163,7 @@ class AwsRouterPlugin(
                     # Port Disassociate
                     self.aws_utils.disassociate_elastic_ip_from_ec2_instance(
                         floating_ip_dict['floating_ip_address'])
-                except exceptions.AwsException as e:
+                except AwsException as e:
                     if 'Association ID not found' in e.msg:
                         # Since its already disassociated on EC2, we continue
                         # and remove the association here.
@@ -169,7 +183,7 @@ class AwsRouterPlugin(
         LOG.info("Deleting elastic IP %s" % floating_ip_address)
         try:
             self.aws_utils.delete_elastic_ip(floating_ip_address)
-        except exceptions.AwsException as e:
+        except AwsException as e:
             if 'InvalidAddress.NotFound' in e.msg:
                 LOG.warn("Elastic IP not found on AWS. Cleaning up neutron db")
             else:
