@@ -11,8 +11,7 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
-import random
-
+from googleapiclient import errors as gce_errors
 from neutron._i18n import _
 from neutron.callbacks import events
 from neutron.callbacks import registry
@@ -26,6 +25,8 @@ from neutron_lib import exceptions as e
 from oslo_log import log
 
 import ipaddr
+import random
+
 try:
     from neutron_lib.plugins import directory
 except ImportError:
@@ -66,11 +67,15 @@ class GceMechanismDriver(api.MechanismDriver):
                            events.BEFORE_DELETE)
         registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
                            events.BEFORE_UPDATE)
+        registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
+                           events.BEFORE_RESPONSE)
 
         registry.subscribe(self.secgroup_callback,
                            resources.SECURITY_GROUP_RULE, events.BEFORE_DELETE)
         registry.subscribe(self.secgroup_callback,
                            resources.SECURITY_GROUP_RULE, events.BEFORE_UPDATE)
+        registry.subscribe(self.secgroup_callback,
+                           resources.SECURITY_GROUP_RULE, events.BEFORE_CREATE)
 
     def _gce_network_name(self, context):
         return 'net-' + context.current[api.ID]
@@ -152,7 +157,7 @@ class GceMechanismDriver(api.MechanismDriver):
     def _gce_secgrp_id(self, openstack_id):
         return "secgrp-" + openstack_id
 
-    def _convert_secgrp_rule_to_gce(self, rule, network_link):
+    def _convert_secgrp_rule_to_gce(self, rule, network_link, validate=False):
         if rule['ethertype'] != 'IPv4':
             raise sg.SecurityGroupRuleInvalidEtherType(
                 ethertype=rule['ethertype'], values=('IPv4', ))
@@ -164,8 +169,9 @@ class GceMechanismDriver(api.MechanismDriver):
             'allowed': [{}],
             'destinationRanges': [],
         }
-        gce_rule['name'] = self._gce_secgrp_id(rule['id'])
-        gce_rule['network'] = network_link
+        if not validate:
+            gce_rule['name'] = self._gce_secgrp_id(rule['id'])
+            gce_rule['network'] = network_link
 
         directions = {
             'ingress': 'INGRESS',
@@ -217,13 +223,22 @@ class GceMechanismDriver(api.MechanismDriver):
         operation = gceutils.create_firewall_rule(compute, project, gce_rule)
         gceutils.wait_for_operation(compute, project, operation)
 
+    def _validate_secgrp_rule(self, rule):
+        try:
+            self._convert_secgrp_rule_to_gce(
+                rule, network_link=None, validate=True)
+        except Exception as e:
+            LOG.exception("An error occurred while creating security "
+                          "group: %s" % e)
+            raise e
+
     def _update_secgrp_rule(self, context, rule_id):
         compute, project = self.gce_svc, self.gce_project
         name = self._gce_secgrp_id(rule_id)
         try:
             gce_firewall_info = gceutils.get_firewall_rule(
                 compute, project, name)
-        except gceutils.HttpError:
+        except gce_errors.HttpError:
             return
 
         try:
@@ -254,7 +269,7 @@ class GceMechanismDriver(api.MechanismDriver):
                      "as firewall rule update not GCE compatible." % name)
             operation = gceutils.delete_firewall_rule(compute, project, name)
             gceutils.wait_for_operation(compute, project, operation)
-        except gceutils.HttpError:
+        except gce_errors.HttpError:
             pass
 
     def _create_secgrp_rules_if_needed(self, context, secgrp_ids):
@@ -276,9 +291,23 @@ class GceMechanismDriver(api.MechanismDriver):
                 try:
                     gce_rule_name = self._gce_secgrp_id(secgrp_rule['id'])
                     gceutils.get_firewall_rule(compute, project, gce_rule_name)
-                except gceutils.HttpError:
+                except gce_errors.HttpError:
                     self._create_secgrp_rule(context, secgrp_rule,
                                              network_link)
+
+    def _validate_secgrp(self, context, secgrp):
+        secgrp_rules = secgrp['security_group_rules']
+        try:
+            for secgrp_rule in secgrp_rules:
+                self._validate_secgrp_rule(secgrp_rule)
+        except Exception as e:
+            try:
+                core_plugin = NeutronManager.get_plugin()
+            except AttributeError:
+                core_plugin = directory.get_plugin()
+            LOG.info('Rollback create security group: %s' % secgrp['id'])
+            core_plugin.delete_security_group(context, secgrp['id'])
+            raise e
 
     def _update_secgrp(self, context, secgrp_id):
         try:
@@ -315,6 +344,7 @@ class GceMechanismDriver(api.MechanismDriver):
         return True
 
     def secgroup_callback(self, resource, event, trigger, **kwargs):
+        LOG.debug("Secgrp_callback: %s %s %s" % (resource, event, kwargs))
         if resource == resources.SECURITY_GROUP_RULE:
             context = kwargs['context']
             if event == events.BEFORE_DELETE:
@@ -323,11 +353,16 @@ class GceMechanismDriver(api.MechanismDriver):
             elif event == events.BEFORE_UPDATE:
                 rule_id = kwargs['security_group_rule_id']
                 self._update_secgrp_rule(context, rule_id)
+            elif event == events.BEFORE_CREATE:
+                rule = kwargs['security_group_rule']
+                self._validate_secgrp_rule(rule)
         elif resource == resources.SECURITY_GROUP:
             if event == events.BEFORE_DELETE:
                 context = kwargs['context']
-                security_group_id = kwargs.get('security_group_id')
-                if security_group_id:
-                    self._delete_secgrp(context, security_group_id)
-                else:
-                    LOG.warn("Security group ID not found in delete request")
+                security_group_id = kwargs['security_group_id']
+                self._delete_secgrp(context, security_group_id)
+            elif event == events.BEFORE_RESPONSE:
+                if kwargs['method_name'] == 'security_group.create.end':
+                    context = kwargs['context']
+                    secgrp = kwargs['data']['security_group']
+                    self._validate_secgrp(context, secgrp)

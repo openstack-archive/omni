@@ -10,14 +10,16 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied. See the
 License for the specific language governing permissions and limitations
 under the License.
 """
-
+import httplib2
 import mock
 import os
 
+from googleapiclient import errors as gce_errors
 from neutron.extensions import securitygroup as sg
 from neutron.manager import NeutronManager
 from neutron.plugins.ml2.drivers.gce.mech_gce import GceMechanismDriver
-from neutron.plugins.ml2.drivers.gce.mech_gce import SecurityGroupInvalidDirection  # noqa
+from neutron.plugins.ml2.drivers.gce.mech_gce import \
+    SecurityGroupInvalidDirection  # noqa
 from neutron.tests import base
 from neutron.tests.common.gce import gce_mock
 from neutron.tests.common.gce.gce_mock import FakeNeutronManager
@@ -138,7 +140,7 @@ class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         sg_rule = self.get_fake_sg_rule()
         gce_rule = self._driver._convert_secgrp_rule_to_gce(
             sg_rule, NETWORK_LINK)
-        self.assertTrue(isinstance(gce_rule, dict))
+        self.assertIsInstance(gce_rule, dict)
 
     @mock.patch('neutron.common.gceutils.wait_for_operation')
     @mock.patch('neutron.common.gceutils.create_firewall_rule')
@@ -152,6 +154,14 @@ class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         mock_wait.assert_called_once_with(self._driver.gce_svc,
                                           self._driver.gce_project,
                                           gce_mock.fake_operation())
+
+    @mock.patch(neutron_get_plugin)
+    def test_validate_sg_rule(self, mock_plugin):
+        mock_plugin.side_effect = FakeNeutronManager
+        sg_rule = self.get_fake_sg_rule()
+        self.assertIsNone(
+            self._driver._validate_secgrp_rule(self.context,
+                                               sg_rule['id']))
 
     @mock.patch(neutron_get_plugin)
     @mock.patch('neutron.common.gceutils.wait_for_operation')
@@ -179,3 +189,22 @@ class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         mock_delete.assert_called_once_with(self._driver.gce_svc,
                                             self._driver.gce_project,
                                             "secgrp-" + sg_rule['id'])
+
+    @mock.patch('neutron.common.gceutils.wait_for_operation')
+    @mock.patch('neutron.common.gceutils.delete_firewall_rule')
+    def test_delete_sg_rule_with_error(self, mock_delete, mock_wait):
+        http_error = gce_errors.HttpError(
+            httplib2.Response({
+                'status': 404,
+                'reason': 'Not Found'
+            }),
+            content='')
+        mock_delete.side_effect = http_error
+        mock_wait.side_effect = gce_mock.wait_for_operation
+        sg_rule = self.get_fake_sg_rule()
+        self.assertIsNone(
+            self._driver._delete_secgrp_rule(self.context, sg_rule['id']))
+        mock_delete.assert_called_once_with(self._driver.gce_svc,
+                                            self._driver.gce_project,
+                                            "secgrp-" + sg_rule['id'])
+        mock_wait.assert_not_called()
