@@ -11,8 +11,7 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
-import random
-
+from googleapiclient import errors as gce_errors
 from neutron._i18n import _
 from neutron.callbacks import events
 from neutron.callbacks import registry
@@ -26,6 +25,8 @@ from neutron_lib import exceptions as e
 from oslo_log import log
 
 import ipaddr
+import random
+
 try:
     from neutron_lib.plugins import directory
 except ImportError:
@@ -66,6 +67,8 @@ class GceMechanismDriver(api.MechanismDriver):
                            events.BEFORE_DELETE)
         registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
                            events.BEFORE_UPDATE)
+        registry.subscribe(self.secgroup_callback, resources.SECURITY_GROUP,
+                           events.BEFORE_CREATE)
 
         registry.subscribe(self.secgroup_callback,
                            resources.SECURITY_GROUP_RULE, events.BEFORE_DELETE)
@@ -217,13 +220,26 @@ class GceMechanismDriver(api.MechanismDriver):
         operation = gceutils.create_firewall_rule(compute, project, gce_rule)
         gceutils.wait_for_operation(compute, project, operation)
 
+    def _validate_secgrp_rule(self, context, rule_id):
+        try:
+            core_plugin = NeutronManager.get_plugin()
+        except AttributeError:
+            core_plugin = directory.get_plugin()
+        rule = core_plugin.get_security_group_rule(context, rule_id)
+        try:
+            self._convert_secgrp_rule_to_gce(rule, network_link=None)
+        except Exception as e:
+            LOG.exception("An error occurred while creating security "
+                          "group: %s" % e)
+            raise e
+
     def _update_secgrp_rule(self, context, rule_id):
         compute, project = self.gce_svc, self.gce_project
         name = self._gce_secgrp_id(rule_id)
         try:
             gce_firewall_info = gceutils.get_firewall_rule(
                 compute, project, name)
-        except gceutils.HttpError:
+        except gce_errors.HttpError:
             return
 
         try:
@@ -254,7 +270,7 @@ class GceMechanismDriver(api.MechanismDriver):
                      "as firewall rule update not GCE compatible." % name)
             operation = gceutils.delete_firewall_rule(compute, project, name)
             gceutils.wait_for_operation(compute, project, operation)
-        except gceutils.HttpError:
+        except gce_errors.HttpError:
             pass
 
     def _create_secgrp_rules_if_needed(self, context, secgrp_ids):
@@ -276,7 +292,7 @@ class GceMechanismDriver(api.MechanismDriver):
                 try:
                     gce_rule_name = self._gce_secgrp_id(secgrp_rule['id'])
                     gceutils.get_firewall_rule(compute, project, gce_rule_name)
-                except gceutils.HttpError:
+                except gce_errors.HttpError:
                     self._create_secgrp_rule(context, secgrp_rule,
                                              network_link)
 
@@ -323,6 +339,9 @@ class GceMechanismDriver(api.MechanismDriver):
             elif event == events.BEFORE_UPDATE:
                 rule_id = kwargs['security_group_rule_id']
                 self._update_secgrp_rule(context, rule_id)
+            elif event == events.BEFORE_CREATE:
+                rule_id = kwargs['security_group_rule_id']
+                self._validate_secgrp_rule(context, rule_id)
         elif resource == resources.SECURITY_GROUP:
             if event == events.BEFORE_DELETE:
                 context = kwargs['context']
