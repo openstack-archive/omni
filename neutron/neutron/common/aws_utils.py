@@ -47,9 +47,8 @@ def _process_exception(e, dry_run):
     if dry_run:
         error_code = e.response['Code']
         if not error_code == 'DryRunOperation':
-            raise AwsException(
-                error_code='AuthFailure',
-                message='Check your AWS authorization')
+            raise AwsException(error_code='AuthFailure',
+                               message='Check your AWS authorization')
     else:
         if isinstance(e, botocore.exceptions.ClientError):
             error_code = e.response['Error']['Code']
@@ -64,7 +63,7 @@ def _process_exception(e, dry_run):
             # which might be irrelevant, keeping it until it becomes stable
             error_message = e.message
             raise AwsException(error_code="NeutronError",
-                                          message=error_message)
+                               message=error_message)
 
 
 def aws_exception(fn):
@@ -193,7 +192,7 @@ class AwsUtils(object):
                 allocation_id = eid_addresses[0]['AllocationId']
         if allocation_id is None:
             raise AwsException(error_code="Allocation ID",
-                                          message="Allocation ID not found")
+                               message="Allocation ID not found")
         return self._get_ec2_client().associate_address(
             DryRun=dry_run,
             InstanceId=ec2_instance_id,
@@ -219,7 +218,7 @@ class AwsUtils(object):
                 association_id = eid_addresses[0]['AssociationId']
         if association_id is None:
             raise AwsException(error_code="Association ID",
-                                          message="Association ID not found")
+                               message="Association ID not found")
         return self._get_ec2_client().disassociate_address(
             DryRun=dry_run,
             AssociationId=association_id
@@ -234,7 +233,7 @@ class AwsUtils(object):
                 allocation_id = eid_addresses[0]['AllocationId']
         if allocation_id is None:
             raise AwsException(error_code="Allocation ID",
-                                          message="Allocation ID not found")
+                               message="Allocation ID not found")
         return self._get_ec2_client().release_address(
             DryRun=dry_run,
             AllocationId=allocation_id)
@@ -433,22 +432,25 @@ class AwsUtils(object):
                     rule_dict['ToPort'] = 65535
                 else:
                     rule_dict['ToPort'] = rule['port_range_max']
-            rule_dict['IpRanges'] = []
-            if rule['remote_group_id'] is not None:
-                rule_dict['IpRanges'].append({
-                    'CidrIp': rule['remote_group_id']
-                })
-            elif rule['remote_ip_prefix'] is not None:
-                rule_dict['IpRanges'].append({
-                    'CidrIp': rule['remote_ip_prefix']
-                })
-            else:
-                if rule['direction'] == 'egress':
-                    # OpenStack does not populate allow all egress rule
-                    # with remote_group_id or remote_ip_prefix keys.
+            if rule['ethertype'] == "IPv4":
+                rule_dict['IpRanges'] = []
+                if rule['remote_group_id'] is not None:
                     rule_dict['IpRanges'].append({
-                        'CidrIp': '0.0.0.0/0'
+                        'CidrIp': rule['remote_group_id']
                     })
+                elif rule['remote_ip_prefix'] is not None:
+                    rule_dict['IpRanges'].append({
+                        'CidrIp': rule['remote_ip_prefix']
+                    })
+                else:
+                    if rule['direction'] == 'egress':
+                        # OpenStack does not populate allow all egress rule
+                        # with remote_group_id or remote_ip_prefix keys.
+                        rule_dict['IpRanges'].append({
+                            'CidrIp': '0.0.0.0/0'
+                        })
+            elif rule['ethertype'] == "IPv6":
+                LOG.warning("Ethertype IPv6 is supported only for EC2-VPC")
             if rule['direction'] == 'egress':
                 egress_rules.append(rule_dict)
             else:
@@ -462,8 +464,10 @@ class AwsUtils(object):
             secgrp.revoke_ingress(IpPermissions=old_ingress)
         if old_egress:
             secgrp.revoke_egress(IpPermissions=old_egress)
-        secgrp.authorize_ingress(IpPermissions=ingress)
-        secgrp.authorize_egress(IpPermissions=egress)
+        if ingress:
+            secgrp.authorize_ingress(IpPermissions=ingress)
+        if egress:
+            secgrp.authorize_egress(IpPermissions=egress)
 
     def _create_sec_grp_rules(self, secgrp, rules):
         ingress, egress = self._convert_openstack_rules_to_vpc(rules)
@@ -496,7 +500,7 @@ class AwsUtils(object):
         secgrp = self._get_ec2_resource().create_security_group(
             GroupName=name, Description=description, VpcId=vpc_id)
         if self._create_sec_grp_tags(secgrp, tags) is False:
-            delete_sec_grp(secgrp.id)  # noqa
+            self.delete_security_group_by_id(secgrp.id)
             raise AwsException(
                 message='Timed out creating tags on security group',
                 error_code='Time Out')
@@ -531,13 +535,18 @@ class AwsUtils(object):
     def _update_sec_group(self, ec2_id, old_ingress, old_egress, new_ingress,
                           new_egress):
         sg = self._get_ec2_resource().SecurityGroup(ec2_id)
-        sg.revoke_ingress(IpPermissions=old_ingress)
-        time.sleep(1)
-        sg.revoke_egress(IpPermissions=old_egress)
-        time.sleep(1)
-        sg.authorize_ingress(IpPermissions=new_ingress)
-        time.sleep(1)
-        sg.authorize_egress(IpPermissions=new_egress)
+        if old_ingress:
+            sg.revoke_ingress(IpPermissions=old_ingress)
+            time.sleep(1)
+        if old_egress:
+            sg.revoke_egress(IpPermissions=old_egress)
+            time.sleep(1)
+        if new_ingress:
+            sg.authorize_ingress(IpPermissions=new_ingress)
+            time.sleep(1)
+        if new_egress:
+            sg.authorize_egress(IpPermissions=new_egress)
+            time.sleep(1)
 
     @aws_exception
     def update_sec_group(self, openstack_id, rules):
