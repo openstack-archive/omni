@@ -433,22 +433,23 @@ class AwsUtils(object):
                     rule_dict['ToPort'] = 65535
                 else:
                     rule_dict['ToPort'] = rule['port_range_max']
-            rule_dict['IpRanges'] = []
-            if rule['remote_group_id'] is not None:
-                rule_dict['IpRanges'].append({
-                    'CidrIp': rule['remote_group_id']
-                })
-            elif rule['remote_ip_prefix'] is not None:
-                rule_dict['IpRanges'].append({
-                    'CidrIp': rule['remote_ip_prefix']
-                })
-            else:
-                if rule['direction'] == 'egress':
-                    # OpenStack does not populate allow all egress rule
-                    # with remote_group_id or remote_ip_prefix keys.
+            if rule['ethertype'] == "IPv4":
+                rule_dict['IpRanges'] = []
+                if rule['remote_group_id'] is not None:
                     rule_dict['IpRanges'].append({
-                        'CidrIp': '0.0.0.0/0'
+                        'CidrIp': rule['remote_group_id']
                     })
+                elif rule['remote_ip_prefix'] is not None:
+                    rule_dict['IpRanges'].append({
+                        'CidrIp': rule['remote_ip_prefix']
+                    })
+                else:
+                    if rule['direction'] == 'egress':
+                        # OpenStack does not populate allow all egress rule
+                        # with remote_group_id or remote_ip_prefix keys.
+                        rule_dict['IpRanges'].append({
+                            'CidrIp': '0.0.0.0/0'
+                        })
             if rule['direction'] == 'egress':
                 egress_rules.append(rule_dict)
             else:
@@ -460,10 +461,10 @@ class AwsUtils(object):
         old_egress = secgrp.ip_permissions_egress
         if old_ingress:
             secgrp.revoke_ingress(IpPermissions=old_ingress)
+            secgrp.authorize_ingress(IpPermissions=ingress)
         if old_egress:
             secgrp.revoke_egress(IpPermissions=old_egress)
-        secgrp.authorize_ingress(IpPermissions=ingress)
-        secgrp.authorize_egress(IpPermissions=egress)
+            secgrp.authorize_egress(IpPermissions=egress)
 
     def _create_sec_grp_rules(self, secgrp, rules):
         ingress, egress = self._convert_openstack_rules_to_vpc(rules)
@@ -531,13 +532,14 @@ class AwsUtils(object):
     def _update_sec_group(self, ec2_id, old_ingress, old_egress, new_ingress,
                           new_egress):
         sg = self._get_ec2_resource().SecurityGroup(ec2_id)
-        sg.revoke_ingress(IpPermissions=old_ingress)
-        time.sleep(1)
-        sg.revoke_egress(IpPermissions=old_egress)
-        time.sleep(1)
-        sg.authorize_ingress(IpPermissions=new_ingress)
-        time.sleep(1)
-        sg.authorize_egress(IpPermissions=new_egress)
+        if old_ingress:
+            sg.revoke_ingress(IpPermissions=old_ingress)
+            time.sleep(1)
+            sg.authorize_ingress(IpPermissions=new_ingress)
+        if old_egress:
+            sg.revoke_egress(IpPermissions=old_egress)
+            time.sleep(1)
+            sg.authorize_egress(IpPermissions=new_egress)
 
     @aws_exception
     def update_sec_group(self, openstack_id, rules):
