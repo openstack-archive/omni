@@ -137,7 +137,9 @@ class GCENovaTestCase(test.TestCase):
                              network_info=[])
         mock_wait.assert_called_once_with(self._driver.gce_svc,
                                           self._driver.gce_project,
-                                          gce_mock.fake_operation())
+                                          gce_mock.fake_operation(),
+                                          interval=5,
+                                          timeout=300)
 
     @mock.patch('nova.virt.gce.driver.gceutils.wait_for_operation')
     @mock.patch('nova.virt.gce.driver.gceutils.attach_disk')

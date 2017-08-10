@@ -598,7 +598,8 @@ class GCEDriver(driver.ComputeDriver):
             LOG.error("Instance {0} not found in GCE, removing from openstack."
                       .format(instance.uuid))
             return
-        gceutils.wait_for_operation(compute, project, operation)
+        gceutils.wait_for_operation(compute, project, operation,
+                                    interval=5, timeout=300)
         LOG.info("Destroy Complete %s" % instance.uuid)
 
     def attach_volume(self, context, connection_info, instance, mountpoint,
