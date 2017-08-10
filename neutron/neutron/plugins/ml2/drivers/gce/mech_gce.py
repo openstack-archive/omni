@@ -158,31 +158,30 @@ class GceMechanismDriver(api.MechanismDriver):
         return "secgrp-" + openstack_id
 
     def _convert_secgrp_rule_to_gce(self, rule, network_link, validate=False):
-        if rule['ethertype'] != 'IPv4':
-            raise sg.SecurityGroupRuleInvalidEtherType(
-                ethertype=rule['ethertype'], values=('IPv4', ))
-
         gce_rule = {
             'sourceRanges': [],
-            'sourceTags': [],
             'targetTags': [],
             'allowed': [{}],
-            'destinationRanges': [],
+            'priority': 1000
         }
-        if not validate:
-            gce_rule['name'] = self._gce_secgrp_id(rule['id'])
-            gce_rule['network'] = network_link
-
         directions = {
             'ingress': 'INGRESS',
         }
-        gce_protocols = ('tcp', 'udp', 'icmp', 'esp', 'ah', 'sctp')
-
         if rule['direction'] in directions:
             gce_rule['direction'] = directions[rule['direction']]
         else:
             raise SecurityGroupInvalidDirection(direction=rule['direction'],
                                                 values=directions.keys())
+
+        if rule['ethertype'] != 'IPv4':
+            raise sg.SecurityGroupRuleInvalidEtherType(
+                ethertype=rule['ethertype'], values=('IPv4', ))
+
+        if not validate:
+            gce_rule['name'] = self._gce_secgrp_id(rule['id'])
+            gce_rule['network'] = network_link
+
+        gce_protocols = ('tcp', 'udp', 'icmp', 'esp', 'ah', 'sctp')
 
         protocol = rule['protocol']
         if protocol is None:
@@ -215,10 +214,13 @@ class GceMechanismDriver(api.MechanismDriver):
         compute, project = self.gce_svc, self.gce_project
         try:
             gce_rule = self._convert_secgrp_rule_to_gce(rule, network_link)
+        except SecurityGroupInvalidDirection:
+            LOG.warn("Egress rules are not supported on GCE.")
+            return
         except Exception as e:
             LOG.exception(
                 "An error occured while creating security group: %s" % e)
-            return
+            raise e
         LOG.info("Create GCE firewall rule %s" % gce_rule)
         operation = gceutils.create_firewall_rule(compute, project, gce_rule)
         gceutils.wait_for_operation(compute, project, operation)
@@ -227,6 +229,9 @@ class GceMechanismDriver(api.MechanismDriver):
         try:
             self._convert_secgrp_rule_to_gce(
                 rule, network_link=None, validate=True)
+        except SecurityGroupInvalidDirection:
+            LOG.warn("Egress rules are not supported on GCE.")
+            return
         except Exception as e:
             LOG.exception("An error occurred while creating security "
                           "group: %s" % e)
