@@ -278,8 +278,9 @@ class AwsUtils(object):
     @aws_exception
     def create_tags_for_vpc(self, neutron_network_id, tags_list):
         vpc_id = self.get_vpc_from_neutron_network_id(neutron_network_id)
-        vpc_res = self._get_ec2_resource().Vpc(vpc_id)
-        vpc_res.create_tags(Tags=tags_list)
+        if vpc_id is not None:
+            vpc_res = self._get_ec2_resource().Vpc(vpc_id)
+            vpc_res.create_tags(Tags=tags_list)
 
     # Subnet Operations
     @aws_exception
