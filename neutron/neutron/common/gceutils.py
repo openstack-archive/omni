@@ -160,7 +160,7 @@ def get_gce_service(service_key):
         raise GceServiceKeyNotFound(path=service_key)
 
     credentials = GoogleCredentials.from_stream(service_key)
-    service = build('compute', 'v1', credentials=credentials)
+    service = build('compute', 'beta', credentials=credentials)
     return service
 
 
