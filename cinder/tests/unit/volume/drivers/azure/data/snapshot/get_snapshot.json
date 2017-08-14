@@ -1,0 +1,15 @@
+{
+    "disk_size_gb": 10,
+    "account_type": <StorageAccountTypes.standard_lrs: "Standard_LRS">,
+    "name": "snapshot3",
+    "tags": null,
+    "creation_data": < azure.mgmt.compute.compute.v2016_04_30_preview.models.creation_data.CreationData object at 0x7f420dcae710 > ,
+    "time_created": datetime.datetime(2017, 8, 2, 10, 44, 57, 354529, tzinfo = < FixedOffset u "+00:00" > ),
+    "provisioning_state": "Succeeded",
+    "location": "eastus",
+    "os_type": null,
+    "type": "Microsoft.Compute/snapshots",
+    "id": "/subscriptions/e6cefc59-5a84-4aa3-813f-142adfc86d49/resourceGroups/omni/providers/Microsoft.Compute/snapshots/snapshot3",
+    "encryption_settings": null,
+    "owner_id": null
+}

@@ -1,5 +1,7 @@
-google-api-python-client>=1.4.2 # Apache-2.0
-moto==0.4.27
+azure-mgmt-compute==1.0.0
+azure-mgmt-resource==1.1.0
 boto>=2.32.1 # MIT
-ipaddr
+google-api-python-client>=1.4.2 # Apache-2.0
 google_compute_engine
+ipaddr
+moto==0.4.27
