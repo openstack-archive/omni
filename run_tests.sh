@@ -88,7 +88,7 @@ echo "============Running tests============"
 run_tests cinder "$GCE_TEST|$AWS_TEST" &
 run_tests nova "$GCE_TEST|$AWS_NOVA_TEST" &
 run_tests glance_store "$GCE_TEST" &
-run_tests neutron "$GCE_TEST" &
+run_tests neutron "$GCE_TEST|$AWS_TEST" &
 wait
 
 check_results cinder
