@@ -3,3 +3,4 @@ moto==0.4.27
 boto>=2.32.1 # MIT
 ipaddr
 google_compute_engine
+boto3

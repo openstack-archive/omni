@@ -299,8 +299,9 @@ class AwsUtils(object):
     @aws_exception
     def create_subnet_tags(self, neutron_subnet_id, tags_list, dry_run=False):
         subnet_id = self.get_subnet_from_neutron_subnet_id(neutron_subnet_id)
-        subnet = self._get_ec2_resource().Subnet(subnet_id)
-        subnet.create_tags(Tags=tags_list)
+        if subnet_id is not None:
+            subnet = self._get_ec2_resource().Subnet(subnet_id)
+            subnet.create_tags(Tags=tags_list)
 
     @aws_exception
     def delete_subnet(self, subnet_id, dry_run=False):
