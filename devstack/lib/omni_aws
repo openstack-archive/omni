@@ -56,7 +56,7 @@ function configure_nova {
     iniset $NOVA_CONF DEFAULT osapi_compute_extension ${COMPUTE_EXTENSION}
     iniset $NOVA_CONF DEFAULT force_dhcp_release True
     sudo cp -R $OMNI_DATA_DIR/nova/virt/ec2/ /opt/stack/nova/nova/virt/
-    sudo systemctl restart devstack@n-api.service devstack@n-cauth.service devstack@n-cond.service devstack@n-cpu.service devstack@n-novnc.service devstack@n-sch.service
+    sudo systemctl restart devstack@n-cpu.service
 }
 
 function configure_neutron {
@@ -84,7 +84,7 @@ function configure_neutron {
     sudo cp -R $OMNI_DATA_DIR/neutron/neutron/plugins/ml2/drivers/aws/ /opt/stack/neutron/neutron/plugins/ml2/drivers/
     sudo cp $OMNI_DATA_DIR/neutron/neutron/services/l3_router/aws_router_plugin.py /opt/stack/neutron/neutron/services/l3_router/
     sudo cp $OMNI_DATA_DIR/neutron/neutron/common/* /opt/stack/neutron/neutron/common/
-    sudo systemctl restart devstack@q-agt.service devstack@q-dhcp.service devstack@q-l3.service devstack@q-meta.service devstack@q-svc.service
+    sudo systemctl restart devstack@q-svc.service
 }
 
 # Restore xtrace
