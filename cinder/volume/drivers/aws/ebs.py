@@ -14,17 +14,20 @@ limitations under the License.
 import time
 
 from boto import ec2
+from boto.exception import EC2ResponseError
 from boto.regioninfo import RegionInfo
 from cinder.exception import APITimeout
+from cinder.exception import ImageNotFound
 from cinder.exception import InvalidConfigurationValue
 from cinder.exception import NotFound
+from cinder.exception import SnapshotUnavailable
+from cinder.exception import VolumeBackendAPIException
 from cinder.exception import VolumeNotFound
 from cinder.volume.driver import BaseVD
 from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
-
 
 aws_group = cfg.OptGroup(name='AWS',
                          title='Options to connect to an AWS environment')
@@ -236,8 +239,76 @@ class EBSDriver(BaseVD):
                                 'created_at': volume['created_at'],
                                 'Name': volume['display_name']})
 
+    def create_cloned_volume(self, volume, srcvol_ref):
+        ebs_snap = None
+        try:
+            ebs_vol = self._find(srcvol_ref['id'], self._conn.get_all_volumes)
+            ebs_snap = self._conn.create_snapshot(ebs_vol.id)
+            if self._wait_for_snapshot(ebs_snap.id, 'completed') is False:
+                raise APITimeout(service='EC2')
+            kwargs = {}
+            kwargs['size'] = volume.size
+            kwargs['zone'] = self._zone
+            kwargs['snapshot'] = ebs_snap.id
+            ebs_vol = self._conn.create_volume(**kwargs)
+            if self._wait_for_create(ebs_vol.id, 'available') is False:
+                raise APITimeout(service='EC2')
+            self._conn.create_tags([ebs_vol.id],
+                                   {'project_id': volume['project_id'],
+                                    'uuid': volume['id'],
+                                    'is_clone': True,
+                                    'created_at': volume['created_at'],
+                                    'Name': volume['display_name']})
+        except NotFound:
+            raise VolumeNotFound(srcvol_ref['id'])
+        except Exception as ex:
+            message = "create_cloned_volume failed! volume: {0}, reason: {1}"
+            LOG.error(message.format(volume.id, ex))
+            raise VolumeBackendAPIException(data=message.format(volume.id, ex))
+        finally:
+            if ebs_snap:
+                self._conn.delete_snapshot(ebs_snap.id)
+
+    def clone_image(self, context, volume, image_location, image_meta,
+                    image_service):
+        kwargs = {}
+        kwargs['size'] = volume.size
+        kwargs['zone'] = self._zone
+        image_id = image_meta['properties']['aws_image_id']
+        snapshot_id = self._get_snapshot_id(image_id)
+        if not snapshot_id:
+            message = "Can not find snapshot for image %s" % image_id
+            raise SnapshotUnavailable(data=message)
+        kwargs['snapshot'] = snapshot_id
+        ebs_vol = self._conn.create_volume(**kwargs)
+        if self._wait_for_create(ebs_vol.id, 'available') is False:
+            raise APITimeout(service='EC2')
+        self._conn.create_tags([ebs_vol.id],
+                               {'project_id': volume['project_id'],
+                                'uuid': volume['id'],
+                                'is_clone': True,
+                                'created_at': volume['created_at'],
+                                'Name': volume['display_name']})
+        metadata = volume['metadata']
+        metadata['new_volume_id'] = ebs_vol.id
+        return dict(metadata=metadata), True
+
+    def _get_snapshot_id(self, image_id):
+        try:
+            response = self._conn.get_all_images(image_ids=[image_id])[0]
+            snapshot_id = response.block_device_mapping[
+                '/dev/sda1'].snapshot_id
+            return snapshot_id
+        except EC2ResponseError:
+            message = "Getting image {0} failed."
+            LOG.error(message.format(image_id))
+            raise ImageNotFound(message.format(image_id))
+
     def copy_image_to_volume(self, context, volume, image_service, image_id):
-        raise NotImplemented()
+        """Nothing need to do here since we create volume from image in
+        clone_image.
+        """
+        pass
 
     def copy_volume_to_image(self, context, volume, image_service, image_meta):
         raise NotImplemented()
@@ -246,4 +317,7 @@ class EBSDriver(BaseVD):
         raise NotImplemented()
 
     def copy_volume_data(self, context, src_vol, dest_vol, remote=None):
-        raise NotImplemented()
+        """Nothing need to do here since we create volume from another
+        volume in create_cloned_volume.
+        """
+        pass
