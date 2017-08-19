@@ -107,7 +107,7 @@ class Store(glance_store.driver.Store):
         :param location `glance_store.location.Location` object, supplied
                         from glance_store.location.get_location_from_uri()
         """
-        yield ('aws://generic', self.get_size(location, context))
+        return 'aws://generic', self.get_size(location, context)
 
     @capabilities.check
     def delete(self, location, context=None):
