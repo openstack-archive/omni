@@ -18,6 +18,7 @@ from boto.regioninfo import RegionInfo
 from cinder.exception import APITimeout
 from cinder.exception import InvalidConfigurationValue
 from cinder.exception import NotFound
+from cinder.exception import SnapshotUnavailable
 from cinder.exception import VolumeNotFound
 from cinder.volume.driver import BaseVD
 from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
@@ -236,8 +237,39 @@ class EBSDriver(BaseVD):
                                 'created_at': volume['created_at'],
                                 'Name': volume['display_name']})
 
+    def clone_image(self, context, volume, image_location, image_meta,
+                    image_service):
+        kwargs = {}
+        kwargs['size'] = volume.size
+        kwargs['zone'] = self._zone
+        snapshot_id = self._get_snapshot_id(image_meta['properties'][
+            'aws_image_id'])
+        kwargs['snapshot'] = snapshot_id
+        ebs_vol = self._conn.create_volume(**kwargs)
+        if self._wait_for_create(ebs_vol.id, 'available') is False:
+            raise APITimeout(service='EC2')
+        self._conn.create_tags([ebs_vol.id],
+                               {'project_id': volume['project_id'],
+                                'uuid': volume['id'],
+                                'is_clone': True,
+                                'created_at': volume['created_at'],
+                                'Name': volume['display_name']})
+        metadata = volume['metadata']
+        metadata['new_volume_id'] = ebs_vol.id
+        return dict(metadata=metadata), True
+
+    def _get_snapshot_id(self, image_id):
+        response = self._conn.get_all_images(image_ids=[image_id])[0]
+        snapshot_id = response.block_device_mapping['/dev/sda1'].snapshot_id
+        if not snapshot_id:
+            msg = "Can not find snapshot for image %s" % image_id
+            raise SnapshotUnavailable(reason=msg)
+        return snapshot_id
+
     def copy_image_to_volume(self, context, volume, image_service, image_id):
-        raise NotImplemented()
+        """Nothing need to do here since we create volume from image in
+        clone_image."""
+        pass
 
     def copy_volume_to_image(self, context, volume, image_service, image_meta):
         raise NotImplemented()
