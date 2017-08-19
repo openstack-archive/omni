@@ -13,9 +13,11 @@ limitations under the License.
 
 from cinder import context
 from cinder.exception import APITimeout
+from cinder.exception import ImageNotFound
 from cinder.exception import NotFound
 from cinder.exception import VolumeNotFound
 from cinder import test
+from cinder.tests.unit.fake_volume import fake_volume_obj
 from cinder.volume.drivers.aws import ebs
 from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
 import mock
@@ -32,8 +34,8 @@ class EBSVolumeTestCase(test.TestCase):
         ebs.CONF.AWS.secret_key = 'fake-secret'
         ebs.CONF.AWS.az = 'us-east-1a'
         self._driver = ebs.EBSDriver()
-        ctxt = context.get_admin_context()
-        self._driver.do_setup(ctxt)
+        self.ctxt = context.get_admin_context()
+        self._driver.do_setup(self.ctxt)
 
     def _stub_volume(self, **kwargs):
         uuid = u'c20aba21-6ef6-446b-b374-45733b4883ba'
@@ -62,12 +64,23 @@ class EBSVolumeTestCase(test.TestCase):
         ss['display_name'] = kwargs.get('display_name', 'snapshot_007')
         return ss
 
+    def _fake_image_meta(self):
+        image_meta = dict()
+        image_meta['properties'] = {}
+        image_meta['status'] = 'active'
+        image_meta['name'] = 'fake_image_name'
+        image_meta['container_format'] = 'ami'
+        image_meta['created_at'] = '2016-10-19 23:22:33'
+        image_meta['disk_format'] = 'ami'
+        image_meta['id'] = 'b2a55a41-7f8b-5ad8-7de9-84309d5108a2'
+        image_meta['properties']['aws_image_id'] = 'ami-00001'
+        return image_meta
+
     @mock_ec2_deprecated
     def test_availability_zone_config(self):
         ebs.CONF.AWS.az = 'hgkjhgkd'
         driver = ebs.EBSDriver()
-        ctxt = context.get_admin_context()
-        self.assertRaises(AvailabilityZoneNotFound, driver.do_setup, ctxt)
+        self.assertRaises(AvailabilityZoneNotFound, driver.do_setup, self.ctxt)
         ebs.CONF.AWS.az = 'us-east-1a'
 
     @mock_ec2_deprecated
@@ -143,3 +156,44 @@ class EBSVolumeTestCase(test.TestCase):
     def test_volume_from_non_existing_snapshot(self):
         self.assertRaises(NotFound, self._driver.create_volume_from_snapshot,
                           self._stub_volume(), self._stub_snapshot())
+
+    def test_clone_image_with_invalid_image(self):
+        image_meta = self._fake_image_meta()
+        volume = fake_volume_obj(self.ctxt)
+        self.assertRaises(ImageNotFound, self._driver.clone_image,
+                          self.ctxt, volume, '', image_meta, '')
+
+    @mock_ec2_deprecated
+    @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._get_snapshot_id')
+    def test_clone_image(self, mock_get):
+        snapshot = self._stub_snapshot()
+        image_meta = self._fake_image_meta()
+        volume = fake_volume_obj(self.ctxt)
+        volume.id = 'd30aba21-6ef6-446b-b374-45733b4883ba'
+        volume.display_name = 'volume-00000001'
+        volume.project_id = 'fake_project_id'
+        volume.created_at = '2016-10-19 23:22:33'
+        self._driver.create_volume(snapshot['volume'])
+        self._driver.create_snapshot(snapshot)
+        ebs_snap = self._driver._find(snapshot['id'],
+                                      self._driver._conn.get_all_snapshots)
+        mock_get.return_value = ebs_snap.id
+        metadata, cloned = self._driver.clone_image(self.ctxt, volume, '',
+                                                    image_meta, '')
+        self.assertEqual(True, cloned)
+        self.assertTrue(isinstance(metadata, dict))
+
+    @mock_ec2_deprecated
+    def test_create_cloned_volume(self):
+        src_volume = fake_volume_obj(self.ctxt)
+        src_volume.display_name = 'volume-00000001'
+        src_volume.created_at = '2016-10-19 23:22:33'
+        src_volume.project_id = 'fake_project_id'
+        volume = fake_volume_obj(self.ctxt)
+        volume.id = 'd30aba21-6ef6-446b-b374-45733b4883ba'
+        volume.display_name = 'volume-00000002'
+        volume.project_id = 'fake_project_id'
+        volume.created_at = '2016-10-19 23:23:33'
+        self._driver.create_volume(src_volume)
+        self.assertIsNone(self._driver.create_cloned_volume(volume,
+                                                            src_volume))

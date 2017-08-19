@@ -14,17 +14,19 @@ limitations under the License.
 import time
 
 from boto import ec2
+from boto.exception import EC2ResponseError
 from boto.regioninfo import RegionInfo
 from cinder.exception import APITimeout
+from cinder.exception import ImageNotFound
 from cinder.exception import InvalidConfigurationValue
 from cinder.exception import NotFound
+from cinder.exception import VolumeBackendAPIException
 from cinder.exception import VolumeNotFound
 from cinder.volume.driver import BaseVD
 from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
-
 
 aws_group = cfg.OptGroup(name='AWS',
                          title='Options to connect to an AWS environment')
@@ -114,6 +116,23 @@ class EBSDriver(BaseVD):
                 raise loopingcall.LoopingCallDone(True)
 
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status,
+                                                     time.time())
+        return timer.start(interval=5).wait()
+
+    def _wait_for_tags_creation(self, id, volume):
+        def _wait_for_completion(start_time):
+            if time.time() - start_time > self._wait_time_sec:
+                raise loopingcall.LoopingCallDone(False)
+            self._conn.create_tags([id],
+                                   {'project_id': volume['project_id'],
+                                    'uuid': volume['id'],
+                                    'is_clone': True,
+                                    'created_at': volume['created_at'],
+                                    'Name': volume['display_name']})
+            obj = self._conn.get_all_volumes([id])[0]
+            if obj.tags:
+                raise loopingcall.LoopingCallDone(True)
+        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_completion,
                                                      time.time())
         return timer.start(interval=5).wait()
 
@@ -236,8 +255,64 @@ class EBSDriver(BaseVD):
                                 'created_at': volume['created_at'],
                                 'Name': volume['display_name']})
 
+    def create_cloned_volume(self, volume, srcvol_ref):
+        ebs_snap = None
+        ebs_vol = None
+        try:
+            src_vol = self._find(srcvol_ref['id'], self._conn.get_all_volumes)
+            ebs_snap = self._conn.create_snapshot(src_vol.id)
+
+            if self._wait_for_snapshot(ebs_snap.id, 'completed') is False:
+                raise APITimeout(service='EC2')
+
+            ebs_vol = self._conn.create_volume(
+                size=volume.size, zone=self._zone, snapshot=ebs_snap.id)
+            if self._wait_for_create(ebs_vol.id, 'available') is False:
+                raise APITimeout(service='EC2')
+            if self._wait_for_tags_creation(ebs_vol.id, volume) is False:
+                raise APITimeout(service='EC2')
+        except NotFound:
+            raise VolumeNotFound(srcvol_ref['id'])
+        except Exception as ex:
+            message = "create_cloned_volume failed! volume: {0}, reason: {1}"
+            LOG.error(message.format(volume.id, ex))
+            if ebs_vol:
+                self._conn.delete_volume(ebs_vol.id)
+            raise VolumeBackendAPIException(data=message.format(volume.id, ex))
+        finally:
+            if ebs_snap:
+                self._conn.delete_snapshot(ebs_snap.id)
+
+    def clone_image(self, context, volume, image_location, image_meta,
+                    image_service):
+        image_id = image_meta['properties']['aws_image_id']
+        snapshot_id = self._get_snapshot_id(image_id)
+        ebs_vol = self._conn.create_volume(size=volume.size, zone=self._zone,
+                                           snapshot=snapshot_id)
+        if self._wait_for_create(ebs_vol.id, 'available') is False:
+            raise APITimeout(service='EC2')
+        if self._wait_for_tags_creation(ebs_vol.id, volume) is False:
+            raise APITimeout(service='EC2')
+        metadata = volume['metadata']
+        metadata['new_volume_id'] = ebs_vol.id
+        return dict(metadata=metadata), True
+
+    def _get_snapshot_id(self, image_id):
+        try:
+            response = self._conn.get_all_images(image_ids=[image_id])[0]
+            snapshot_id = response.block_device_mapping[
+                '/dev/sda1'].snapshot_id
+            return snapshot_id
+        except EC2ResponseError:
+            message = "Getting image {0} failed.".format(image_id)
+            LOG.error(message)
+            raise ImageNotFound(message)
+
     def copy_image_to_volume(self, context, volume, image_service, image_id):
-        raise NotImplemented()
+        """Nothing need to do here since we create volume from image in
+        clone_image.
+        """
+        pass
 
     def copy_volume_to_image(self, context, volume, image_service, image_meta):
         raise NotImplemented()
@@ -246,4 +321,7 @@ class EBSDriver(BaseVD):
         raise NotImplemented()
 
     def copy_volume_data(self, context, src_vol, dest_vol, remote=None):
-        raise NotImplemented()
+        """Nothing need to do here since we create volume from another
+        volume in create_cloned_volume.
+        """
+        pass
