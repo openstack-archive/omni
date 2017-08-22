@@ -51,6 +51,7 @@ copy_neutron_files() {
     cp $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/neutron/neutron/services/l3_router/
     cp -R $WORKSPACE/neutron/tests/common/ $DIRECTORY/neutron/neutron/tests/
     cp -R $WORKSPACE/neutron/tests/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/tests/unit/plugins/ml2/
+    cp -R $WORKSPACE/neutron/tests/services/l3_router/* $DIRECTORY/neutron/neutron/tests/unit/services/l3_router/
 }
 
 run_tests() {
@@ -87,7 +88,7 @@ echo "============Running tests============"
 run_tests cinder "$GCE_TEST|$AWS_TEST" &
 run_tests nova "$GCE_TEST|$AWS_NOVA_TEST" &
 run_tests glance_store "$GCE_TEST" &
-run_tests neutron "$GCE_TEST" &
+run_tests neutron "$GCE_TEST|$AWS_TEST" &
 wait
 
 check_results cinder
