@@ -18,7 +18,7 @@ import contextlib
 import boto
 import mock
 from moto import mock_cloudwatch
-from moto import mock_ec2
+from moto import mock_ec2_deprecated
 from oslo_utils import uuidutils
 
 from nova.compute import task_states
@@ -33,7 +33,7 @@ from nova.virt.ec2 import EC2Driver
 
 
 class EC2DriverTestCase(test.NoDBTestCase):
-    @mock_ec2
+    @mock_ec2_deprecated
     @mock_cloudwatch
     def setUp(self):
         super(EC2DriverTestCase, self).setUp()
@@ -80,7 +80,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.uuid = None
         self.instance_node = None
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_list_instances(self):
         for _ in range(0, 5):
             self.conn.ec2_conn.run_instances('ami-1234abc')
@@ -88,7 +88,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(5, len(fake_list))
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_add_ssh_keys_key_exists(self):
         fake_key = 'fake_key'
         fake_key_data = 'abcdefgh'
@@ -102,7 +102,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             fake_get.assert_called_once_with(fake_key)
             fake_import.assert_not_called()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_add_ssh_keys_key_absent(self):
         fake_key = 'fake_key'
         fake_key_data = 'abcdefgh'
@@ -218,7 +218,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                         admin_password=None, network_info=None,
                         block_device_info=None)
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn(self):
         self._create_instance()
         self._create_network()
@@ -245,7 +245,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             self.assertEqual(inst.instance_type, 't2.small')
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn_with_key(self):
         self._create_instance(key_name='fake_key', key_data='fake_key_data')
         self._create_network()
@@ -265,7 +265,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             self.assertEqual(inst.key_name, 'fake_key')
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn_with_userdata(self):
         userdata = """
         #cloud-config
@@ -298,7 +298,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                 security_group_ids=[])
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn_with_network_error(self):
         self._create_instance()
         with contextlib.nested(
@@ -313,7 +313,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                               self._create_nova_vm)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn_with_network_error_from_aws(self):
         self._create_instance()
         with contextlib.nested(
@@ -329,7 +329,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                               self._create_nova_vm)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_spawn_with_image_error(self):
         self._create_instance()
         self._create_network()
@@ -346,7 +346,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                               self._create_nova_vm)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def _create_vm_in_aws_nova(self):
         self._create_instance()
         self._create_network()
@@ -361,7 +361,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock_secgrp.return_value = []
             self._create_nova_vm()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_snapshot(self):
         self._create_vm_in_aws_nova()
         GlanceImageServiceV2.update = mock.Mock()
@@ -382,7 +382,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(aws_img.id, metadata['properties']['ec2_image_id'])
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_snapshot_instance_not_found(self):
         boto.ec2.EC2Connection.create_image = mock.Mock()
         self._create_instance()
@@ -398,7 +398,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         boto.ec2.EC2Connection.create_image.assert_not_called()
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_reboot_soft(self):
         boto.ec2.EC2Connection.reboot_instances = mock.Mock()
         self._create_vm_in_aws_nova()
@@ -408,7 +408,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             instance_ids=[fake_inst.id], dry_run=False)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_reboot_hard(self):
         self._create_vm_in_aws_nova()
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
@@ -428,7 +428,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(fake_inst.id, wait_state_calls[0][0][1])
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_reboot_instance_not_found(self):
         self._create_instance()
         boto.ec2.EC2Connection.stop_instances = mock.Mock()
@@ -438,7 +438,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         boto.ec2.EC2Connection.stop_instances.assert_not_called()
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_power_off(self):
         self._create_vm_in_aws_nova()
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
@@ -448,14 +448,14 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(fake_inst.state, 'stopped')
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_power_off_instance_not_found(self):
         self._create_instance()
         self.assertRaises(exception.InstanceNotFound, self.conn.power_off,
                           self.instance)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_power_on(self):
         self._create_vm_in_aws_nova()
         fake_inst = self.fake_ec2_conn.get_only_instances()[0]
@@ -465,14 +465,14 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(fake_inst.state, 'running')
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_power_on_instance_not_found(self):
         self._create_instance()
         self.assertRaises(exception.InstanceNotFound, self.conn.power_on,
                           self.context, self.instance, None, None)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_destroy(self):
         self._create_vm_in_aws_nova()
         self.conn.destroy(self.context, self.instance, None, None)
@@ -480,7 +480,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual('terminated', fake_instance.state)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_destroy_instance_not_found(self):
         self._create_instance()
         with contextlib.nested(
@@ -494,7 +494,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             fake_wait.assert_not_called()
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_destory_instance_terminated_on_aws(self):
         self._create_vm_in_aws_nova()
         fake_instances = self.fake_ec2_conn.get_only_instances()
@@ -512,7 +512,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             fake_wait.assert_not_called()
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_destroy_instance_shut_down_on_aws(self):
         self._create_vm_in_aws_nova()
         fake_instances = self.fake_ec2_conn.get_only_instances()
@@ -528,7 +528,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                 instance_ids=[fake_instances[0].id])
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_get_info(self):
         self._create_vm_in_aws_nova()
         vm_info = self.conn.get_info(self.instance)
@@ -536,7 +536,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self.assertEqual(self.instance.id, vm_info.id)
         self.reset()
 
-    @mock_ec2
+    @mock_ec2_deprecated
     def test_get_info_instance_not_found(self):
         self._create_instance()
         self.assertRaises(exception.InstanceNotFound, self.conn.get_info,

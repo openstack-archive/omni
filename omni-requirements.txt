@@ -1,5 +1,5 @@
 google-api-python-client>=1.4.2 # Apache-2.0
-moto==0.4.27
+moto>=1.0.1
 boto>=2.32.1 # MIT
 ipaddr
 google_compute_engine
