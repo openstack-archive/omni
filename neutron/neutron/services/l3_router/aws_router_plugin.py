@@ -12,11 +12,11 @@ under the License.
 """
 
 import neutron_lib
+from neutron_lib import constants as const
 
 from distutils.version import LooseVersion
 from neutron.common.aws_utils import AwsException
 from neutron.common.aws_utils import AwsUtils
-from neutron.common import constants as n_const
 from neutron.db import common_db_mixin
 from neutron.db import extraroute_db
 from neutron.db import l3_db
@@ -83,6 +83,7 @@ class AwsRouterPlugin(
     # FLOATING IP FEATURES
 
     def create_floatingip(self, context, floatingip):
+        public_ip_allocated = None
         try:
             response = self.aws_utils.allocate_elastic_ip()
             public_ip_allocated = response['PublicIp']
@@ -107,7 +108,7 @@ class AwsRouterPlugin(
         try:
             res = super(AwsRouterPlugin, self).create_floatingip(
                 context, floatingip,
-                initial_status=n_const.FLOATINGIP_STATUS_DOWN)
+                initial_status=const.FLOATINGIP_STATUS_DOWN)
         except Exception as e:
             LOG.error("Error when adding floating ip in openstack. "
                       "Deleting Elastic IP: %s" % public_ip_allocated)
@@ -216,7 +217,6 @@ class AwsRouterPlugin(
         try:
             LOG.info("Deleting router %s" % id)
             self.aws_utils.detach_internet_gateway_by_router_id(id)
-            self.aws_utils.delete_internet_gateway_by_router_id(id)
         except Exception as e:
             LOG.error("Error in Deleting Router: %s " % e)
             raise e
