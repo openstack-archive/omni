@@ -11,16 +11,16 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
-import time
-
+from keystoneauth1 import loading
+from neutron_lib.exceptions import NeutronException
+from novaclient import client as novaclient
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_service import loopingcall
 
 import boto3
 import botocore
-from neutron_lib.exceptions import NeutronException
-from novaclient.v2 import client as novaclient
-from oslo_service import loopingcall
+import time
 
 aws_group = cfg.OptGroup(name='AWS',
                          title='Options to connect to an AWS environment')
@@ -87,15 +87,16 @@ class AwsUtils(object):
             'region_name': cfg.CONF.AWS.region_name
         }
         self._wait_time_sec = 60 * cfg.CONF.AWS.wait_time_min
+        self.nova_api_version = "2"
 
     def get_nova_client(self):
         if self._nova_client is None:
+            nova_auth = loading.load_auth_from_conf_options(cfg.CONF, 'nova')
+            session = loading.load_session_from_conf_options(cfg.CONF, 'nova',
+                                                             auth=nova_auth)
             self._nova_client = novaclient.Client(
-                username=cfg.CONF.nova_admin_username,
-                api_key=cfg.CONF.nova_admin_password,
-                auth_url=cfg.CONF.nova_admin_auth_url,
-                tenant_id=cfg.CONF.nova_admin_tenant_id,
-                region_name=cfg.CONF.nova_region_name, insecure=True)
+                self.nova_api_version, session=session,
+                region_name=cfg.CONF.nova.region_name)
         return self._nova_client
 
     def _get_ec2_client(self):
