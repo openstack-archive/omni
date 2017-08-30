@@ -1,0 +1,10 @@
+Code-Review+1: Pratik Shah <pratik@infracloud.io>
+Code-Review+2: Sanket Sudake <sanket@infracloud.io>
+Workflow+1: Sanket Sudake <sanket@infracloud.io>
+Code-Review+1: ShangXiao <shangxiaobj@inspur.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 30 Aug 2017 09:33:57 +0000
+Reviewed-on: https://review.openstack.org/498999
+Project: openstack/omni
+Branch: refs/heads/master
