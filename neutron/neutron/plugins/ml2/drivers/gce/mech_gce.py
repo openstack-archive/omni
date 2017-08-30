@@ -219,7 +219,7 @@ class GceMechanismDriver(api.MechanismDriver):
             return
         except Exception as e:
             LOG.exception(
-                "An error occured while creating security group: %s" % e)
+                "An error occurred while creating security group: %s" % e)
             raise e
         LOG.info("Create GCE firewall rule %s" % gce_rule)
         operation = gceutils.create_firewall_rule(compute, project, gce_rule)
