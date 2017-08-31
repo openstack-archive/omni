@@ -378,7 +378,7 @@ class GCEDriver(driver.ComputeDriver):
             LOG.info("Completed snapshot for instance %s" % instance.uuid)
 
         except Exception as e:
-            LOG.exception("An error occured during image creation: %s" % e)
+            LOG.exception("An error occurred during image creation: %s" % e)
             if instance_stopped:
                 operation = gceutils.start_instance(compute, project, zone,
                                                     gce_id)
