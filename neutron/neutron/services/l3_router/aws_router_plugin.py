@@ -287,8 +287,11 @@ class AwsRouterPlugin(
             context, router_id, interface_info)
 
     def remove_router_interface(self, context, router_id, interface_info):
-        LOG.info("Deleting port %s from router %s" %
-                 (interface_info['port_id'], router_id))
+        if 'port_id' in interface_info:
+            interface_id = interface_info['port_id']
+        elif 'subnet_id' in interface_info:
+            interface_id = interface_info['subnet_id']
+        LOG.info("Deleting port %s from router %s" % (interface_id, router_id))
         self.aws_utils.detach_internet_gateway_by_router_id(router_id)
         route_tables = self.aws_utils.get_route_table_by_router_id(router_id)
         if route_tables:
