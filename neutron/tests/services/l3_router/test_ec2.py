@@ -216,7 +216,7 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
                           self._driver.create_router, self.context, router)
 
     @mock_ec2
-    @mock.patch(L3_NAT_DBONLY_MIXIN + '.delete_router')
+    @mock.patch('neutron.db.l3_hamode_db.L3_HA_NAT_db_mixin.delete_router')
     @mock.patch(L3_NAT_DBONLY_MIXIN + '.create_router')
     def test_delete_router_success(self, mock_create, mock_delete):
         mock_delete.return_value = None
@@ -227,7 +227,7 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         mock_delete.assert_called_once_with(self.context, response['id'])
 
     @mock_ec2
-    @mock.patch(L3_NAT_DBONLY_MIXIN + '.delete_router')
+    @mock.patch(L3_NAT_WITH_DVR_DB_MIXIN + '.delete_router')
     @mock.patch(L3_NAT_DBONLY_MIXIN + '.create_router')
     def test_delete_router_failure(self, mock_create, mock_delete):
         mock_delete.side_effect = exceptions.PhysicalNetworkNameError()
@@ -237,7 +237,8 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
             self.context, response['id'])
 
     @mock_ec2
-    @mock.patch(L3_NAT_DBONLY_MIXIN + '.update_router')
+    @mock.patch(
+        'neutron.db.extraroute_db.ExtraRoute_dbonly_mixin.update_router')
     @mock.patch(L3_NAT_DBONLY_MIXIN + '.create_router')
     def test_update_router_success(self, mock_create, mock_update):
         mock_update.return_value = {'id': "fake_id"}
@@ -250,7 +251,7 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
             self.context, response['id'], router)
 
     @mock_ec2
-    @mock.patch(L3_NAT_DBONLY_MIXIN + '.add_router_interface')
+    @mock.patch(L3_NAT_WITH_DVR_DB_MIXIN + '.add_router_interface')
     @mock.patch(
         'neutron.common.aws_utils.AwsUtils.get_vpc_from_neutron_network_id')
     @mock.patch('neutron.db.db_base_plugin_v2.NeutronDbPluginV2.get_subnet')
@@ -260,7 +261,7 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         aws_obj = AwsUtils()
         vpc_id = aws_obj.create_vpc_and_tags(self.context.current['cidr'],
                                              self._get_fake_tags())
-        interface_info = {'subnet_id': 'fake_subnet_id'}
+        interface_info = {'subnet_id': '00000000-0000-0000-0000-000000000000'}
         response = self._create_router(mock_create)
         router_id = response['id']
         mock_get.return_value = {'network_id': 'fake_network_id'}
@@ -276,7 +277,7 @@ class AWSRouterPluginTests(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
                                          interface_info)
 
     @mock_ec2
-    @mock.patch(L3_NAT_DBONLY_MIXIN + '.remove_router_interface')
+    @mock.patch(L3_NAT_WITH_DVR_DB_MIXIN + '.remove_router_interface')
     @mock.patch(L3_NAT_DBONLY_MIXIN + '.create_router')
     def test_remove_router_interface(self, mock_create, mock_remove):
         response = self._create_router(mock_create)

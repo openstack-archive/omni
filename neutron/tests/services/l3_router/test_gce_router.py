@@ -80,7 +80,7 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
     @mock.patch(GCE_UTILS + '.release_floatingip')
     @mock.patch('neutron.db.l3_db.L3_NAT_dbonly_mixin.get_floatingip')
     def test_update_floatingip_portid_absent(
-        self, mock_l3_get, mock_release, mock_l3_update):
+            self, mock_l3_get, mock_release, mock_l3_update):
 
         mock_release.return_value = None
         mock_l3_update.return_value = None
@@ -106,8 +106,8 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
     @mock.patch(GCE_UTILS + '.release_floatingip')
     @mock.patch('neutron.db.l3_db.L3_NAT_dbonly_mixin.get_floatingip')
     def test_update_floatingip_portid_present(
-        self, mock_l3_get, mock_release, mock_l3_update,
-        mock_neutron_getport, mock_assignip):
+            self, mock_l3_get, mock_release, mock_l3_update,
+            mock_neutron_getport, mock_assignip):
 
         mock_release.return_value = None
         mock_l3_update.return_value = None
@@ -176,7 +176,7 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
     @mock.patch(GCE_UTILS + '.assign_floatingip')
     @mock.patch('neutron.db.db_base_plugin_v2.NeutronDbPluginV2.get_port')
     def test_associate_floatingip_ipaddress_present(
-        self, mock_neutron_getport, mock_assignip):
+            self, mock_neutron_getport, mock_assignip):
 
         mock_assignip.return_value = None
         floating_ip_address = '192.168.20.2'
@@ -216,8 +216,8 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
     @mock.patch(L3_NAT_DVR_DB + '.create_floatingip')
     @mock.patch(GCE_UTILS + '.allocate_floatingip')
     def test_create_floatingip_portid_present(
-        self, mock_allocateip, mock_l3_createip,
-        mock_neutron_getport, mock_assignip):
+            self, mock_allocateip, mock_l3_createip,
+            mock_neutron_getport, mock_assignip):
 
         floatingip = {'floatingip': {'port_id': True}}
         public_ip_allocated = '192.168.20.2'
@@ -275,7 +275,7 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
     @mock.patch(L3_NAT_DVR_DB + '.create_floatingip')
     @mock.patch(GCE_UTILS + '.allocate_floatingip')
     def test_create_floatingip_exception_allocip(
-        self, mock_allocateip, mock_l3_createip, mock_delip, mock_relip):
+            self, mock_allocateip, mock_l3_createip, mock_delip, mock_relip):
 
         floatingip = {'floatingip': {'port_id': True}}
         res = '192.168.10.1'
@@ -346,8 +346,8 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         interface_info = 'some_info'
 
         mock_add_interface.return_value = None
-        self.assertIsNone(self._driver.add_router_interface(self.context,
-                          router_id, interface_info))
+        self.assertIsNone(self._driver.add_router_interface(
+            self.context, router_id, interface_info))
         mock_add_interface.assert_called_once_with(
             self.context, router_id, interface_info)
 
@@ -358,7 +358,7 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         interface_info = 'some_info'
 
         mock_remove_interface.return_value = None
-        self.assertIsNone(self._driver.remove_router_interface(self.context,
-                          router_id, interface_info))
+        self.assertIsNone(self._driver.remove_router_interface(
+            self.context, router_id, interface_info))
         mock_remove_interface.assert_called_once_with(
             self.context, router_id, interface_info)
