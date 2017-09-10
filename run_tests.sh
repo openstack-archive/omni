@@ -58,7 +58,7 @@ run_tests() {
     project=$1
     tests=$2
     cd $DIRECTORY/$project
-    cat $WORKSPACE/omni-requirements.txt >> requirements.txt
+    cat $WORKSPACE/test-requirements.txt >> requirements.txt
     tox -epy27 $tests > $DIRECTORY/$project.log
 }
 
