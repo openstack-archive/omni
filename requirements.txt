@@ -1,0 +1,6 @@
+azure-mgmt-compute==1.0.0
+azure-mgmt-network==1.0.0
+azure-mgmt-resource==1.1.0
+boto>=2.32.1 # MIT
+google-api-python-client>=1.4.2 # Apache-2.0
+ipaddr
