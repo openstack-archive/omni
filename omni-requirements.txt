@@ -1,8 +1,0 @@
-google-api-python-client>=1.4.2 # Apache-2.0
-moto>=1.0.1
-boto>=2.32.1 # MIT
-ipaddr
-google_compute_engine
-azure-mgmt-resource==1.1.0
-azure-mgmt-compute==1.0.0
-azure-mgmt-network==1.0.0
