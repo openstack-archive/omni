@@ -468,7 +468,36 @@ class AzureDriver(driver.ComputeDriver):
                       device_type=None,
                       encryption=None):
         """Attach the disk to the instance at mountpoint using info."""
-        raise NotImplementedError()
+
+        def _check_available_lun(data_disks):
+            # We can attach upto 16 data disks to an instance
+            luns = [i.lun for i in data_disks]
+            for i in range(1, 16):
+                if i not in luns:
+                    return i
+            raise Exception("Could not attach volume")
+
+        volume_data = connection_info['data']
+        azure_name = self._get_omni_name_from_instance(instance)
+        azure_instance = utils.get_instance(
+            self.compute_client, drv_conf.resource_group, azure_name)
+        data_disks = azure_instance.storage_profile.data_disks
+        lun = _check_available_lun(data_disks)
+        name = volume_data['name']
+        id = volume_data['id']
+        data_disk = {
+            'name': name,
+            'create_option': 'attach',
+            'lun': lun,
+            'managed_disk': {
+                'id': id
+            }
+        }
+        data_disks.append(data_disk)
+        utils.create_or_update_instance(self.compute_client,
+                                        drv_conf.resource_group, azure_name,
+                                        azure_instance)
+        LOG.info("Attached volume %s to instance %s" % (name, instance.uuid))
 
     def detach_volume(self,
                       connection_info,
@@ -476,7 +505,22 @@ class AzureDriver(driver.ComputeDriver):
                       mountpoint,
                       encryption=None):
         """Detach the disk attached to the instance."""
-        raise NotImplementedError()
+        volume_data = connection_info['data']
+        azure_name = self._get_omni_name_from_instance(instance)
+        azure_instance = utils.get_instance(
+            self.compute_client, drv_conf.resource_group, azure_name)
+        data_disks = azure_instance.storage_profile.data_disks
+        name = volume_data['name']
+        filtered_disks = [disk for disk in data_disks if disk.name != name]
+        if len(filtered_disks) == len(data_disks):
+            LOG.error("Volume %s was not attached to instance %s" %
+                      (name, instance.uuid))
+            return
+        azure_instance.storage_profile.data_disks = filtered_disks
+        utils.create_or_update_instance(self.compute_client,
+                                        drv_conf.resource_group, azure_name,
+                                        azure_instance)
+        LOG.info("Detached volume %s from instance %s" % (name, instance.uuid))
 
     def swap_volume(self, old_connection_info, new_connection_info, instance,
                     mountpoint, resize_to):
