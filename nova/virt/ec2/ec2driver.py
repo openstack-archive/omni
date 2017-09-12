@@ -34,6 +34,7 @@ from nova.i18n import _
 from nova.image import glance
 from nova.virt import driver
 from nova.virt.ec2.exception_handler import Ec2ExceptionHandler
+from nova.virt.ec2.keypair import import KeyPairNotifications
 from nova.virt import hardware
 from nova.virt import virtapi
 from oslo_config import cfg
@@ -63,11 +64,12 @@ aws_opts = [
     # 1 TB Storage
     cfg.IntOpt('max_disk_gb',
                default=1024,
-               help='Max storage in GB that can be used')
+               help='Max storage in GB that can be used'),
+    cfg.BoolOpt('enable_keypair_notifications', default=True,
+                help='Listen to keypair delete notifications and act on them')
 ]
 
 CONF = cfg.CONF
-# CONF.import_opt('my_ip', 'nova.netconf')
 
 CONF.register_group(aws_group)
 CONF.register_opts(aws_opts, group=aws_group)
@@ -121,7 +123,8 @@ EC2_FLAVOR_MAP = {
     't2.micro': {'memory_mb': 1024.0, 'vcpus': 1},
     't2.nano': {'memory_mb': 512.0, 'vcpus': 1},
     't2.small': {'memory_mb': 2048.0, 'vcpus': 1},
-    'x1.32xlarge': {'memory_mb': 1998848.0, 'vcpus': 128}
+    'x1.32xlarge': {'memory_mb': 1998848.0, 'vcpus': 128},
+    't1.micro': {'memory_mb': 613.0, 'vcpus': 1},
 }
 _EC2_NODES = None
 
@@ -190,6 +193,9 @@ class EC2Driver(driver.ComputeDriver):
             aws_region, aws_access_key_id=CONF.AWS.access_key,
             aws_secret_access_key=CONF.AWS.secret_key)
 
+        # Allow keypair deletion to be controlled by conf
+        if CONF.AWS.enable_keypair_notifications:
+            eventlet.spawn(KeyPairNotifications(self.ec2_conn).run)
         LOG.info("EC2 driver init with %s region" % aws_region)
         if _EC2_NODES is None:
             set_nodes([CONF.host])
@@ -257,7 +263,7 @@ class EC2Driver(driver.ComputeDriver):
         """
         image_api = glance.get_default_image_service()
         image_meta = image_api._client.call(context, 2, 'get',
-                                            image_lacking_meta['id'])
+                                            image_lacking_meta.id)
         LOG.info("Calling _get_image_ami_id_from_meta Meta: %s" % image_meta)
         try:
             return image_meta['aws_image_id']
@@ -372,6 +378,8 @@ class EC2Driver(driver.ComputeDriver):
             instance['metadata'].update({'ec2_id': ec2_id})
             ec2_instance_obj.add_tag("Name", instance['display_name'])
             ec2_instance_obj.add_tag("openstack_id", instance['uuid'])
+            ec2_instance_obj.add_tag("openstack_project_id", context.project_id)
+            ec2_instance_obj.add_tag("openstack_user_id", context.user_id)
             self._uuid_to_ec2_instance[instance.uuid] = ec2_instance_obj
 
             # Fetch Public IP of the instance if it has one
@@ -684,13 +692,13 @@ class EC2Driver(driver.ComputeDriver):
         return True
 
     def attach_interface(self, instance, image_meta, vif):
-        LOG.debug("******* ATTTACH INTERFACE *******")
+        LOG.debug("AWS: Attaching interface", instance=instance)
         if vif['id'] in self._interfaces:
             raise exception.InterfaceAttachFailed('duplicate')
         self._interfaces[vif['id']] = vif
 
     def detach_interface(self, instance, vif):
-        LOG.debug("******* DETACH INTERFACE *******")
+        LOG.debug("AWS: Detaching interface", instance=instance)
         try:
             del self._interfaces[vif['id']]
         except KeyError:
