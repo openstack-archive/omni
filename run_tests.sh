@@ -25,6 +25,7 @@ DIRECTORY="$WORKSPACE/openstack"
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
 AWS_NOVA_TEST="test_ec2.EC2DriverTestCase"
+AWS_KEYPAIR_TEST="test_keypair.KeyPairNotificationsTestCase"
 declare -A results
 declare -i fail
 declare -i pass
@@ -87,7 +88,7 @@ copy_neutron_files
 
 echo "============Running tests============"
 run_tests cinder "$GCE_TEST|$AWS_TEST" &
-run_tests nova "$GCE_TEST|$AWS_NOVA_TEST" &
+run_tests nova "$GCE_TEST|$AWS_NOVA_TEST|$AWS_KEYPAIR_TEST" &
 run_tests glance_store "$GCE_TEST" &
 run_tests neutron "$GCE_TEST|$AWS_TEST" &
 wait
