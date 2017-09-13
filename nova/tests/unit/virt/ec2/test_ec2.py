@@ -47,6 +47,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
                    region_name=self.region_name,
                    group='AWS')
         self.flags(api_servers=['http://localhost:9292'], group='glance')
+        self.flags(rabbit_port='5672')
         self.conn = EC2Driver(None, False)
         self.type_data = None
         self.project_id = 'fake'
