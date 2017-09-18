@@ -707,17 +707,6 @@ class EC2Driver(driver.ComputeDriver):
             raise exception.InterfaceDetachFailed('not attached')
 
     def get_info(self, instance):
-        """Get the current status of an instance, by name (not ID!)
-
-        :param instance: nova.objects.instance.Instance object
-        Returns a dict containing:
-        :state:           the running state, one of the power_state codes
-        :max_mem:         (int) the maximum memory in KBytes allowed
-        :mem:             (int) the memory in KBytes used by the domain
-        :num_cpu:         (int) the number of virtual CPUs for the domain
-        :cpu_time:        (int) the CPU time used in nanoseconds
-        """
-
         if instance.uuid in self._uuid_to_ec2_instance:
             ec2_instance = self._uuid_to_ec2_instance[instance.uuid]
         elif 'metadata' in instance and 'ec2_id' in instance['metadata']:
@@ -734,13 +723,7 @@ class EC2Driver(driver.ComputeDriver):
             raise exception.InstanceNotFound(instance_id=instance['name'])
 
         power_state = EC2_STATE_MAP.get(ec2_instance.state)
-        ec2_flavor = self.ec2_flavor_info.get(ec2_instance.instance_type)
-        memory_mb = ec2_flavor['memory_mb']
-        vcpus = ec2_flavor['vcpus']
-
-        return hardware.InstanceInfo(state=power_state, max_mem_kb=memory_mb,
-                                     mem_kb=memory_mb, num_cpu=vcpus,
-                                     cpu_time_ns=0, id=instance.id)
+        return hardware.InstanceInfo(state=power_state)
 
     def allow_key(self, key):
         for key_to_filter in DIAGNOSTIC_KEYS_TO_FILTER:
