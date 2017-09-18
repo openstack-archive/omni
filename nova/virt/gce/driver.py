@@ -125,9 +125,9 @@ class GCEDriver(driver.ComputeDriver):
         m.update(gce_id)
         return str(uuid.UUID(bytes=m.digest(), version=4))
 
-    def _get_gce_id_from_instance(self, instance):
-        if 'gce_id' in instance.metadata and instance.metadata['gce_id']:
-            return instance.metadata['gce_id']
+    def _get_gce_name_from_instance(self, instance):
+        if 'gce_name' in instance.metadata and instance.metadata['gce_name']:
+            return instance.metadata['gce_name']
         elif instance.uuid in self._uuid_to_gce_instance:
             return self._uuid_to_gce_instance[instance.uuid]['name']
         # if none of the conditions are met we cannot map OpenStack UUID to
@@ -244,12 +244,21 @@ class GCEDriver(driver.ComputeDriver):
         gce_instance = gceutils.get_instance(compute, project, zone,
                                              gce_instance_name)
         # Update GCE info in openstack instance metadata
-        instance.metadata.update({'gce_id': gce_instance['name']})
+        instance.metadata.update({'gce_id': gce_instance['id']})
+        instance.metadata.update({'gce_name': gce_instance['name']})
         gce_metadata = [
             {
                 'key': 'openstack_id',
                 'value': instance.uuid
             },
+            {
+                'key': 'openstack_project_id',
+                'value': context.project_id
+            },
+            {
+                'key': 'openstack_user_id',
+                'value': context.user_id
+            }
         ]
         ssh_keys = self._process_ssh_keys(instance)
         if ssh_keys:
@@ -287,7 +296,7 @@ class GCEDriver(driver.ComputeDriver):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
 
         try:
-            gce_id = self._get_gce_id_from_instance(instance)
+            gce_id = self._get_gce_name_from_instance(instance)
             LOG.info("Taking snapshot of instance %s" % instance.uuid)
             try:
                 boot_disk = gceutils.get_instance_boot_disk(
@@ -378,7 +387,7 @@ class GCEDriver(driver.ComputeDriver):
             LOG.info("Completed snapshot for instance %s" % instance.uuid)
 
         except Exception as e:
-            LOG.exception("An error occurred during image creation: %s" % e)
+            LOG.exception("An error occured during image creation: %s" % e)
             if instance_stopped:
                 operation = gceutils.start_instance(compute, project, zone,
                                                     gce_id)
@@ -430,7 +439,7 @@ class GCEDriver(driver.ComputeDriver):
     def _soft_reboot(self, context, instance, network_info,
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         LOG.info('Stopping instance %s' % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
@@ -442,7 +451,7 @@ class GCEDriver(driver.ComputeDriver):
     def _hard_reboot(self, context, instance, network_info,
                      block_device_info=None):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         LOG.info('Resetting instance %s' % instance.uuid)
         operation = gceutils.reset_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
@@ -497,7 +506,7 @@ class GCEDriver(driver.ComputeDriver):
                                waiting for it to shutdown
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         LOG.info('Stopping instance %s' % instance.uuid)
         operation = gceutils.stop_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
@@ -506,7 +515,7 @@ class GCEDriver(driver.ComputeDriver):
     def power_on(self, context, instance, network_info, block_device_info):
         """Power on the specified instance."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         LOG.info('Starting instance %s' % instance.uuid)
         operation = gceutils.start_instance(compute, project, zone, gce_id)
         gceutils.wait_for_operation(compute, project, operation)
@@ -584,7 +593,7 @@ class GCEDriver(driver.ComputeDriver):
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         LOG.info('Deleting instance %s' % instance.uuid)
         try:
-            gce_id = self._get_gce_id_from_instance(instance)
+            gce_id = self._get_gce_name_from_instance(instance)
         except exception.InstanceNotFound:
             LOG.error("Unable to find GCE mapping for instance %s" %
                       instance.uuid)
@@ -606,7 +615,7 @@ class GCEDriver(driver.ComputeDriver):
                       disk_bus=None, device_type=None, encryption=None):
         """Attach the disk to the instance at mountpoint using info."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         gce_volume = connection_info['data']
         disk_name = gce_volume['name']
         disk_link = gce_volume['selfLink']
@@ -620,7 +629,7 @@ class GCEDriver(driver.ComputeDriver):
                       encryption=None):
         """Detach the disk attached to the instance."""
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         gce_volume = connection_info['data']
         disk_name = gce_volume['name']
         operation = gceutils.detach_disk(compute, project, zone, gce_id,
@@ -652,7 +661,7 @@ class GCEDriver(driver.ComputeDriver):
         :cpu_time:        (int) the CPU time used in nanoseconds
         """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
-        gce_id = self._get_gce_id_from_instance(instance)
+        gce_id = self._get_gce_name_from_instance(instance)
         gce_instance = gceutils.get_instance(compute, project, zone, gce_id)
         power_state = GCE_STATE_MAP[gce_instance['status']]
 

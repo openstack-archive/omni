@@ -12,11 +12,12 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
+import boto
+import mock
+
 from moto import mock_ec2_deprecated
 from nova import test
 from nova.virt.ec2.keypair import KeyPairNotifications
-import boto
-import mock
 
 
 class KeyPairNotificationsTestCase(test.NoDBTestCase):
@@ -80,4 +81,3 @@ class KeyPairNotificationsTestCase(test.NoDBTestCase):
         aws_keypairs = self.fake_aws_conn.get_all_key_pairs()
         self.assertEqual(len(aws_keypairs), 1)
         self.assertEqual(aws_keypairs[0].name, fake_key_name_2)
-
