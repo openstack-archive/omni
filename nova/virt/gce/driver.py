@@ -641,29 +641,11 @@ class GCEDriver(driver.ComputeDriver):
         raise NotImplementedError()
 
     def get_info(self, instance):
-        """Get the current status of an instance, by name (not ID!)
-
-        :param instance: nova.objects.instance.Instance object
-        Returns a dict containing:
-        :state:           the running state, one of the power_state codes
-        :max_mem:         (int) the maximum memory in KBytes allowed
-        :mem:             (int) the memory in KBytes used by the domain
-        :num_cpu:         (int) the number of virtual CPUs for the domain
-        :cpu_time:        (int) the CPU time used in nanoseconds
-        """
         compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
         gce_id = self._get_gce_id_from_instance(instance)
         gce_instance = gceutils.get_instance(compute, project, zone, gce_id)
         power_state = GCE_STATE_MAP[gce_instance['status']]
-
-        gce_flavor = self.gce_flavor_info[instance.flavor.name]
-        memory_mb = gce_flavor['memory_mb']
-        vcpus = gce_flavor['vcpus']
-
-        return hardware.InstanceInfo(state=power_state,
-                                     max_mem_kb=memory_mb * 1024,
-                                     mem_kb=memory_mb * 1024, num_cpu=vcpus,
-                                     cpu_time_ns=0, id=instance.id)
+        return hardware.InstanceInfo(state=power_state)
 
     def allow_key(self, key):
         if key in DIAGNOSTIC_KEYS_TO_FILTER:

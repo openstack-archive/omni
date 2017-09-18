@@ -69,7 +69,6 @@ class AwsRouterPlugin(
     def __init__(self):
         self.aws_utils = AwsUtils()
         super(AwsRouterPlugin, self).__init__()
-        l3_db.subscribe()
 
     def get_plugin_type(self):
         return plugin_type

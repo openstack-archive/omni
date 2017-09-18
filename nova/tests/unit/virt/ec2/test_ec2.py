@@ -535,7 +535,6 @@ class EC2DriverTestCase(test.NoDBTestCase):
         self._create_vm_in_aws_nova()
         vm_info = self.conn.get_info(self.instance)
         self.assertEqual(0, vm_info.state)
-        self.assertEqual(self.instance.id, vm_info.id)
         self.reset()
 
     @mock_ec2_deprecated

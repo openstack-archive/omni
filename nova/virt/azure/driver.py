@@ -542,31 +542,11 @@ class AzureDriver(driver.ComputeDriver):
         return state
 
     def get_info(self, instance):
-        """Get the current status of an instance, by name (not ID!)
-
-        :param instance: nova.objects.instance.Instance object
-        Returns a dict containing:
-        :state:           the running state, one of the power_state codes
-        :max_mem:         (int) the maximum memory in KBytes allowed
-        :mem:             (int) the memory in KBytes used by the domain
-        :num_cpu:         (int) the number of virtual CPUs for the domain
-        :cpu_time:        (int) the CPU time used in nanoseconds
-         """
-
         azure_name = self._get_omni_name_from_instance(instance)
         azure_instance = utils.get_instance(
             self.compute_client, drv_conf.resource_group, azure_name)
         state = self._get_power_state(azure_instance)
-        flavor = self.flavor_info[instance.flavor.name]
-        memory = flavor.memory_in_mb * 1024
-        cpus = flavor.number_of_cores
-        return hardware.InstanceInfo(
-            state=state,
-            max_mem_kb=memory,
-            mem_kb=memory,
-            num_cpu=cpus,
-            cpu_time_ns=0,
-            id=instance.id)
+        return hardware.InstanceInfo(state=state)
 
     def allow_key(self, key):
         DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']
