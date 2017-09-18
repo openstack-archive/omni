@@ -15,10 +15,12 @@ under the License.
 
 import eventlet
 eventlet.monkey_patch()
+
 from kombu import Connection
 from kombu import Exchange
-from kombu import Queue
 from kombu.mixins import ConsumerMixin
+from kombu import Queue
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -66,5 +68,5 @@ class KeyPairNotifications(ConsumerMixin):
             try:
                 LOG.info('Deleting %s keypair', key_name)
                 self.ec2_conn.delete_key_pair(key_name)
-            except:
+            except Exception:
                 LOG.exception('Could not delete %s', key_name)
