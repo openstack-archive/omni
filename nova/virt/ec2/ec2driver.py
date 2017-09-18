@@ -380,7 +380,8 @@ class EC2Driver(driver.ComputeDriver):
             instance['metadata'].update({'ec2_id': ec2_id})
             ec2_instance_obj.add_tag("Name", instance['display_name'])
             ec2_instance_obj.add_tag("openstack_id", instance['uuid'])
-            ec2_instance_obj.add_tag("openstack_project_id", context.project_id)
+            ec2_instance_obj.add_tag(
+                "openstack_project_id", context.project_id)
             ec2_instance_obj.add_tag("openstack_user_id", context.user_id)
             self._uuid_to_ec2_instance[instance.uuid] = ec2_instance_obj
 

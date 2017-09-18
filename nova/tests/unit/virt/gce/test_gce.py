@@ -40,7 +40,7 @@ class GCENovaTestCase(test.TestCase):
         self.context = context.get_admin_context()
         self.instance = fake_instance.fake_instance_obj(self.context)
         self.instance.system_metadata = {'image_gce_link': 'fake_link'}
-        self.instance.metadata = {'gce_id': "instance-1"}
+        self.instance.metadata = {'gce_name': "instance-1"}
         self.instance.display_name = "fake_instance"
         self.instance.flavor.name = "n1-standard-1"
         self._driver.init_host(None)
@@ -51,7 +51,7 @@ class GCENovaTestCase(test.TestCase):
         mock_list_instances.side_effect = gce_mock.list_instances
         mock_get_metadata.side_effect = gce_mock.get_instances_metadata_key
         instances_list = self._driver.list_instances()
-        self.assertTrue(isinstance(instances_list, list))
+        self.assertIsInstance(instances_list, list)
         self.assertEqual(["instance-1", "instance-2"], instances_list)
 
     @mock.patch('nova.virt.gce.driver.gceutils.get_instances_metadata_key')
@@ -60,7 +60,7 @@ class GCENovaTestCase(test.TestCase):
         mock_list_instances.side_effect = gce_mock.list_instances
         mock_get_metadata.side_effect = gce_mock.get_instances_metadata_key
         instances_list = self._driver.list_instance_uuids()
-        self.assertTrue(isinstance(instances_list, list))
+        self.assertIsInstance(instances_list, list)
         self.assertEqual(2, len(instances_list))
 
     @mock.patch('nova.virt.gce.driver.gceutils.set_instance_metadata')
@@ -153,7 +153,7 @@ class GCENovaTestCase(test.TestCase):
             data=disk_data), instance=self.instance, mountpoint="/dev/sda")
         mock_attach.assert_called_once_with(
             self._driver.gce_svc, self._driver.gce_project,
-            self._driver.gce_zone, self.instance.metadata['gce_id'],
+            self._driver.gce_zone, self.instance.metadata['gce_name'],
             disk_data['name'], disk_data['selfLink'])
         mock_wait.assert_called_once_with(self._driver.gce_svc,
                                           self._driver.gce_project,
@@ -171,7 +171,7 @@ class GCENovaTestCase(test.TestCase):
             data=disk_data), instance=self.instance, mountpoint="/dev/sda")
         mock_detach.assert_called_once_with(
             self._driver.gce_svc, self._driver.gce_project,
-            self._driver.gce_zone, self.instance.metadata['gce_id'],
+            self._driver.gce_zone, self.instance.metadata['gce_name'],
             disk_data['name'])
         mock_wait.assert_called_once_with(self._driver.gce_svc,
                                           self._driver.gce_project,
@@ -186,7 +186,7 @@ class GCENovaTestCase(test.TestCase):
                           update_task_state=gce_mock.update_task_state)
         mock_get_instance.assert_called_once_with(
             self._driver.gce_svc, self._driver.gce_project,
-            self._driver.gce_zone, self.instance.metadata['gce_id'])
+            self._driver.gce_zone, self.instance.metadata['gce_name'])
 
     @mock.patch('nova.virt.gce.driver.gceutils.delete_snapshot')
     @mock.patch('nova.virt.gce.driver.gceutils.delete_disk')
