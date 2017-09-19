@@ -29,7 +29,6 @@ from nova import block_device
 from nova.compute import power_state
 from nova.compute import task_states
 from nova.console import type as ctype
-from nova import db
 from nova import exception
 from nova.i18n import _
 from nova.image import glance
@@ -37,7 +36,6 @@ from nova.virt import driver
 from nova.virt.ec2.exception_handler import Ec2ExceptionHandler
 from nova.virt.ec2.keypair import KeyPairNotifications
 from nova.virt import hardware
-from nova.virt import virtapi
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall
@@ -1070,50 +1068,3 @@ class EC2Driver(driver.ComputeDriver):
 
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_state)
         timer.start(interval=0.5).wait()
-
-
-class EC2VirtAPI(virtapi.VirtAPI):
-    def instance_update(self, context, instance_uuid, updates):
-        return db.instance_update_and_get_original(context,
-                                                   instance_uuid,
-                                                   updates)
-
-    def aggregate_get_by_host(self, context, host, key=None):
-        return db.aggregate_get_by_host(context, host, key=key)
-
-    def aggregate_metadata_add(self, context, aggregate, metadata,
-                               set_delete=False):
-        return db.aggregate_metadata_add(context, aggregate['id'], metadata,
-                                         set_delete=set_delete)
-
-    def aggregate_metadata_delete(self, context, aggregate, key):
-        return db.aggregate_metadata_delete(context, aggregate['id'], key)
-
-    def security_group_get_by_instance(self, context, instance):
-        return db.security_group_get_by_instance(context, instance['uuid'])
-
-    def security_group_rule_get_by_security_group(self, context,
-                                                  security_group):
-        return db.security_group_rule_get_by_security_group(
-            context, security_group['id'])
-
-    def provider_fw_rule_get_all(self, context):
-        return db.provider_fw_rule_get_all(context)
-
-    def agent_build_get_by_triple(self, context, hypervisor, os, architecture):
-        return db.agent_build_get_by_triple(context,
-                                            hypervisor, os, architecture)
-
-    def instance_type_get(self, context, instance_type_id):
-        return db.instance_type_get(context, instance_type_id)
-
-    def block_device_mapping_get_all_by_instance(self, context, instance,
-                                                 legacy=True):
-        bdms = db.block_device_mapping_get_all_by_instance(context,
-                                                           instance['uuid'])
-        if legacy:
-            bdms = block_device.legacy_mapping(bdms)
-        return bdms
-
-    def block_device_mapping_update(self, context, bdm_id, values):
-        return db.block_device_mapping_update(context, bdm_id, values)
