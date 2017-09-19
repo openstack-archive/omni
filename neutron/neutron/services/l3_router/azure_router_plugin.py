@@ -67,7 +67,6 @@ class AzureRouterPlugin(
     @resource_registry.tracked_resources(router=router, floatingip=floating_ip)
     def __init__(self):
         super(AzureRouterPlugin, self).__init__()
-        l3_db.subscribe()
         self._compute_client = None
         self._network_client = None
         self.tenant_id = azure_conf.tenant_id

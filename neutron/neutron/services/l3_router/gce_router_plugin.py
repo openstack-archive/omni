@@ -70,7 +70,6 @@ class GceRouterPlugin(
                                          floatingip=floating_ip)
     def __init__(self):
         super(GceRouterPlugin, self).__init__()
-        l3_db.subscribe()
         self.gce_zone = gceconf.zone
         self.gce_region = gceconf.region
         self.gce_project = gceconf.project_id
