@@ -31,7 +31,8 @@ STORE_SCHEME = 'azure'
 
 class StoreLocation(location.StoreLocation):
     """Class describing Azure URI."""
-    uri_attrs = ['subscriptions', 'providers', 'resourcegroups', 'images']
+    uri_attrs = ['subscriptions', 'providers', 'locations', 'publishers',
+                 'artifacttypes', 'offers', 'skus', 'versions']
 
     def __init__(self, store_specs, conf):
         super(StoreLocation, self).__init__(store_specs, conf)
@@ -75,7 +76,6 @@ class StoreLocation(location.StoreLocation):
         pieces = urllib.parse.urlparse(uri)
         self.scheme = pieces.scheme
         self._parse_attrs(pieces.netloc + pieces.path)
-        self.image_name = self.images
 
 
 class Store(driver.Store):
@@ -120,13 +120,8 @@ class Store(driver.Store):
         return '%s://generic' % self.scheme, self.get_size(location, context)
 
     def get_size(self, location, context=None):
-        image_name = location.store_location.image_name.split("/")[-1]
-        response = utils.get_image(self.azure_client, self.resource_group,
-                                   image_name)
-        size = response.storage_profile.os_disk.disk_size_gb
-        if size is None:
-            return 1
-        return size * units.Gi
+        # VM image size is unknown. Hence return 1 as image size cannot be 0
+        return 1 * units.Gi
 
     @capabilities.check
     def add(self, image_id, image_file, image_size, context=None,

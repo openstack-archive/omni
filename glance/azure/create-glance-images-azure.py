@@ -10,17 +10,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-from azure.common.credentials import ServicePrincipalCredentials
-from azure.mgmt.compute import ComputeManagementClient
-from functools import partial
-from glanceclient import Client
-from keystoneauth1 import loading
-from keystoneauth1 import session
-
 import hashlib
 import os
 import sys
 import uuid
+
+from functools import partial
+
+from azure.common.credentials import ServicePrincipalCredentials
+from azure.mgmt.compute import ComputeManagementClient
+from glanceclient import Client
+from keystoneauth1 import loading
+from keystoneauth1 import session
 
 
 def get_credentials(tenant_id, client_id, client_secret):
@@ -109,11 +110,11 @@ class ImageProvider(object):
     def __init__(self):
         self.glance_operator = GlanceOperator()
 
-    def get_public_images(self):
+    def get_vm_images(self):
         raise NotImplementedError()
 
     def register_images(self):
-        for image_info in self.get_public_images():
+        for image_info in self.get_vm_images():
             self.glance_operator.register_image(image_info)
 
 
@@ -131,6 +132,11 @@ class AzureImages(ImageProvider):
 
     def _azure_to_openstack_formatter(self, image_info):
         """Converts Azure image data to Openstack image data format."""
+        publisher = image_info.id.split('Publishers')[1].split("/")[1]
+        sku = image_info.id.split('Skus')[1].split("/")[1]
+        offer = image_info.id.split('Offers')[1].split("/")[1]
+        version = image_info.id.split('Versions')[1].split("/")[1]
+        image_name = "{0}:{1}:{2}:{3}".format(publisher, offer, sku, version)
         image_uuid = self._get_image_uuid(image_info.id)
         location_info = [
             {
@@ -140,7 +146,7 @@ class AzureImages(ImageProvider):
             },
         ]
         return {'id': image_uuid,
-                'name': image_info.name,
+                'name': image_name,
                 'container_format': 'bare',
                 'disk_format': 'raw',
                 'visibility': 'public',
@@ -152,12 +158,37 @@ class AzureImages(ImageProvider):
         md.update(azure_id)
         return str(uuid.UUID(bytes=md.digest()))
 
-    def get_public_images(self):
-        images = self.compute_client.images
-        response = images.list_by_resource_group(self.resource_group)
-        for result in response.advance_page():
-            image_response = images.get(self.resource_group, result.name)
-            yield self._azure_to_openstack_formatter(image_response)
+    def get_vm_images(self):
+        images = self.compute_client.virtual_machine_images
+        self.publishers = ['Canonical', 'CoreOS', 'credativ', 'OpenLogic',
+                           'RedHat', 'SUSE', 'MicrosoftVisualStudio',
+                           'MicrosoftSQLServer']
+        self.offers = ['UbuntuServer', 'CoreOS', 'Debian', 'CentOS', 'RHEL',
+                       'SLES', 'Windows', 'SQL2016SP1-WS2016']
+        self.skus = ['14.04.5-LTS', '16.04-LTS', '17.04', 'Stable', '7', '8',
+                     '9', '7.0', '7.3', '12-SP3', 'Enterprise', 'Standard',
+                     'Win7-SP1-Ent-N-x64', 'Win81-Ent-N-x64',
+                     'Windows-10-N-x64']
+        publisher_list = images.list_publishers(self.region)
+        for publisher in publisher_list:
+            if publisher.name in self.publishers:
+                offers_list = images.list_offers(self.region, publisher.name)
+                for offer in offers_list:
+                    if offer.name in self.offers:
+                        skus_list = images.list_skus(
+                            self.region, publisher.name, offer.name)
+                        for sku in skus_list:
+                            if sku.name in self.skus:
+                                sku_list = images.list(
+                                    self.region, publisher.name, offer.name,
+                                    sku.name)
+                                if len(sku_list) > 0:
+                                    version = sku_list.pop()
+                                    image_data = images.get(
+                                        self.region, publisher.name,
+                                        offer.name, sku.name, version.name)
+                                    yield self._azure_to_openstack_formatter(
+                                        image_data)
 
 
 if __name__ == '__main__':

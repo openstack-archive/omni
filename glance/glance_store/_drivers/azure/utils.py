@@ -11,9 +11,10 @@ License for the specific language governing permissions and limitations
 under the License.
 """
 
+from functools import partial
+
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
-from functools import partial
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -41,9 +42,3 @@ def _get_client(tenant_id, client_id, client_secret, subscription_id,
 
 
 get_compute_client = partial(_get_client, cls=ComputeManagementClient)
-
-
-def get_image(compute, resource_group, name):
-    """Return image info from Azure
-    """
-    return compute.images.get(resource_group, name)
