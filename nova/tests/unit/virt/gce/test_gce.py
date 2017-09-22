@@ -26,7 +26,7 @@ from nova.virt.gce.driver import GCEDriver
 DATA_DIR = os.path.dirname(os.path.abspath(__file__)) + '/data'
 
 
-class GCENovaTestCase(test.TestCase):
+class GCENovaTestCase(test.NoDBTestCase):
     @mock.patch('nova.virt.gce.driver.gceutils.get_machines_info')
     @mock.patch('nova.virt.gce.driver.gceutils.get_gce_service')
     def setUp(self, mock_service, mock_machine_info):
