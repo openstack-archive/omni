@@ -13,46 +13,49 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-key="$1"
-
-case $key in
-    -j) JENKINSRUN=true;;
-    -wj) JENKINSRUN=false;;
-esac
 
 WORKSPACE=$(pwd)
 DIRECTORY="$WORKSPACE/openstack"
+
+# Openstack Repos
+NOVA="nova"
+CINDER="cinder"
+GLANCE="glance_store"
+NEUTRON="neutron"
+
+# Tests to Run
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
 AWS_NOVA_TEST="test_ec2.EC2DriverTestCase"
 AWS_KEYPAIR_TEST="test_keypair.KeyPairNotificationsTestCase"
+
 declare -A results
 declare -i fail
 declare -i pass
 
 copy_cinder_files() {
-    cp -R $WORKSPACE/cinder/tests/unit/volume/drivers/ $DIRECTORY/cinder/cinder/tests/unit/volume/
-    cp -R $WORKSPACE/cinder/volume/drivers/ $DIRECTORY/cinder/cinder/volume/
+    cp -R $WORKSPACE/cinder/tests/unit/volume/drivers/ $DIRECTORY/$CINDER/cinder/tests/unit/volume/
+    cp -R $WORKSPACE/cinder/volume/drivers/ $DIRECTORY/$CINDER/cinder/volume/
 }
 
 copy_glance_files() {
-    cp -R $WORKSPACE/glance/glance_store/tests/unit/ $DIRECTORY/glance_store/glance_store/tests
-    cp $WORKSPACE/glance/gce/gceutils.py $DIRECTORY/glance_store/glance_store/_drivers/
-    cp -R $WORKSPACE/glance/glance_store/_drivers/ $DIRECTORY/glance_store/glance_store/
+    cp -R $WORKSPACE/glance/glance_store/tests/unit/ $DIRECTORY/$GLANCE/glance_store/tests
+    cp $WORKSPACE/glance/gce/gceutils.py $DIRECTORY/$GLANCE/glance_store/_drivers/
+    cp -R $WORKSPACE/glance/glance_store/_drivers/ $DIRECTORY/$GLANCE/glance_store/
 }
 
 copy_nova_files() {
-    cp -R $WORKSPACE/nova/virt/ $DIRECTORY/nova/nova/
-    cp -R $WORKSPACE/nova/tests/unit/virt $DIRECTORY/nova/nova/tests/unit
+    cp -R $WORKSPACE/nova/virt/ $DIRECTORY/$NOVA/nova/
+    cp -R $WORKSPACE/nova/tests/unit/virt $DIRECTORY/$NOVA/nova/tests/unit
 }
 
 copy_neutron_files() {
-    cp -R $WORKSPACE/neutron/neutron/common/ $DIRECTORY/neutron/neutron/
-    cp -R $WORKSPACE/neutron/neutron/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/plugins/ml2/
-    cp -R $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/neutron/neutron/services/l3_router/
-    cp -R $WORKSPACE/neutron/tests/common/ $DIRECTORY/neutron/neutron/tests/
-    cp -R $WORKSPACE/neutron/tests/plugins/ml2/drivers/ $DIRECTORY/neutron/neutron/tests/unit/plugins/ml2/
-    cp -R $WORKSPACE/neutron/tests/services/l3_router/* $DIRECTORY/neutron/neutron/tests/unit/services/l3_router/
+    cp -R $WORKSPACE/neutron/neutron/common/ $DIRECTORY/$NEUTRON/neutron/
+    cp -R $WORKSPACE/neutron/neutron/plugins/ml2/drivers/ $DIRECTORY/$NEUTRON/neutron/plugins/ml2/
+    cp -R $WORKSPACE/neutron/neutron/services/l3_router/* $DIRECTORY/$NEUTRON/neutron/services/l3_router/
+    cp -R $WORKSPACE/neutron/tests/common/ $DIRECTORY/$NEUTRON/neutron/tests/
+    cp -R $WORKSPACE/neutron/tests/plugins/ml2/drivers/ $DIRECTORY/$NEUTRON/neutron/tests/unit/plugins/ml2/
+    cp -R $WORKSPACE/neutron/tests/services/l3_router/* $DIRECTORY/$NEUTRON/neutron/tests/unit/services/l3_router/
 }
 
 run_tests() {
@@ -87,28 +90,28 @@ copy_glance_files
 copy_neutron_files
 
 echo "============Running tests============"
-run_tests cinder "$GCE_TEST|$AWS_TEST" &
-run_tests nova "$GCE_TEST|$AWS_NOVA_TEST|$AWS_KEYPAIR_TEST" &
-run_tests glance_store "$GCE_TEST" &
-run_tests neutron "$GCE_TEST|$AWS_TEST" &
+run_tests $CINDER "$GCE_TEST|$AWS_TEST" &
+run_tests $NOVA "$GCE_TEST|$AWS_NOVA_TEST|$AWS_KEYPAIR_TEST" &
+run_tests $GLANCE "$GCE_TEST" &
+run_tests $NEUTRON "$GCE_TEST|$AWS_TEST" &
 wait
 
-check_results cinder
-check_results nova
-check_results glance_store
-check_results neutron
+check_results $CINDER
+check_results $NOVA
+check_results $GLANCE
+check_results $NEUTRON
 
 echo "==========================================================================================="
-echo "Cinder results: ${results[cinder]}"
-echo "Nova results: ${results[nova]}"
-echo "Glance results: ${results[glance_store]}"
-echo "Neutron results: ${results[neutron]}"
+echo "Cinder results: ${results[$CINDER]}"
+echo "Nova results: ${results[$NOVA]}"
+echo "Glance results: ${results[$GLANCE]}"
+echo "Neutron results: ${results[$NEUTRON]}"
 echo "==========================================================================================="
 
-if [ "${results[cinder]}" != "PASSED" ] || \
-    [ "${results[nova]}" != "PASSED" ] || \
-    [ "${results[glance_store]}" != "PASSED" ] || \
-    [ "${results[neutron]}" != "PASSED" ]; then
-    echo "Test cases failed"
-    exit 1
-fi
+for value in ${results[@]}
+do
+    if [ "${value}" != "PASSED" ] ; then
+        echo "Test cases failed"
+        exit 1
+    fi
+done
