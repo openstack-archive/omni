@@ -67,6 +67,12 @@ class AzureDriver(driver.ComputeDriver):
         self.compute_client = utils.get_compute_client(*args)
         self.resource_client = utils.get_resource_client(*args)
         self.network_client = utils.get_network_client(*args)
+        is_resource_created = utils.check_resource_existence(
+            self.resource_client, drv_conf.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(
+                self.resource_client, drv_conf.resource_group, drv_conf.region)
+
         self.flavor_info.update(
             utils.get_vm_sizes(self.compute_client, drv_conf.region))
         LOG.info("%s driver init with %s project, %s region" %
