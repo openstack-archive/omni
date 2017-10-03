@@ -57,6 +57,12 @@ class AzureMechanismDriver(api.MechanismDriver):
     def initialize(self):
         LOG.info("Azure Mechanism driver init with %s project, %s region" %
                  (azure_conf.tenant_id, azure_conf.region))
+        is_resource_created = utils.check_resource_existence(
+            self.resource_client, azure_conf.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(self.resource_client,
+                                        azure_conf.resource_group,
+                                        azure_conf.region)
         self._subscribe_events()
 
     def _subscribe_events(self):
@@ -283,11 +289,10 @@ class AzureMechanismDriver(api.MechanismDriver):
         sg_name = self._azure_secgrp_id(rule['security_group_id'])
         name = self._azure_secrule_id(rule['id'])
         sg = utils.get_sg(net_svc, resource_group, sg_name)
-        """Each Azure security rule has a priority.
-        The value can be between 100 and 4096. The priority number must be
-        unique for each rule in the collection. The lower the priority number,
-        the higher the priority of the rule.
-        """
+        # Each Azure security rule has a priority.
+        # The value can be between 100 and 4096. The priority number must be
+        # unique for each rule in the collection. The lower the priority
+        # number, the higher the priority of the rule.
         previous_priorities = sorted([i.priority for i in sg.security_rules])
         if previous_priorities:
             priority = previous_priorities[-1] + 1

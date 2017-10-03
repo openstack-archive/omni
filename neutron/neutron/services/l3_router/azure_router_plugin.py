@@ -76,6 +76,14 @@ class AzureRouterPlugin(
         self.region = azure_conf.region
         self.resource_group = azure_conf.resource_group
 
+        resource_client = utils.get_resource_client(
+            self.tenant_id, self.client_id, self.client_secret,
+            self.subscription_id)
+        is_resource_created = utils.check_resource_existence(
+            resource_client, self.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(
+                resource_client, self.resource_group, self.region)
         LOG.info("Azure Router plugin init with %s project, %s region" %
                  (self.tenant_id, self.region))
 

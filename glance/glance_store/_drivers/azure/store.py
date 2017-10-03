@@ -96,6 +96,17 @@ class Store(driver.Store):
         self.subscription_id = conf.azure.subscription_id
         self.resource_group = conf.azure.resource_group
         self._azure_client = None
+
+        region = conf.azure.region
+        resource_client = utils.get_resource_client(
+            self.tenant_id, self.client_id, self.client_secret,
+            self.subscription_id)
+        is_resource_created = utils.check_resource_existence(
+            resource_client, self.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(resource_client,
+                                        self.resource_group,
+                                        region)
         LOG.info('Initialized Azure Glance Store driver')
 
     def get_schemes(self):

@@ -13,6 +13,7 @@ under the License.
 
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.resource import ResourceManagementClient
 from functools import partial
 from oslo_log import log as logging
 
@@ -41,9 +42,35 @@ def _get_client(tenant_id, client_id, client_secret, subscription_id,
 
 
 get_compute_client = partial(_get_client, cls=ComputeManagementClient)
+get_resource_client = partial(_get_client, cls=ResourceManagementClient)
 
 
 def get_image(compute, resource_group, name):
     """Return image info from Azure
     """
     return compute.images.get(resource_group, name)
+
+
+def check_resource_existence(client, resource_group):
+    """Create if resource group exists in Azure or not
+
+    :param client: Azure object using ResourceManagementClient
+    :param resource_group: string, name of Azure resource group
+    :return: True if exists, otherwise False
+    :rtype: boolean
+    """
+    response = client.resource_groups.check_existence(resource_group)
+    return response
+
+
+def create_resource_group(client, resource_group, region):
+    """Create resource group in Azure
+
+    :param client: Azure object using ResourceManagementClient
+    :param resource_group: string, name of Azure resource group
+    :param region: string, name of Azure region
+    """
+    response = client.resource_groups.create_or_update(
+        resource_group, {'location': region})
+    LOG.debug("resource_group response: {0}".format(response))
+    LOG.debug("Created Resource Group '{0}' in Azure".format(resource_group))
