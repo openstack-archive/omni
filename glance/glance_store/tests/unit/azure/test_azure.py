@@ -12,9 +12,9 @@ under the License.
 """
 
 import mock
-import os
 
-from azure.mgmt.compute import models
+from azure.mgmt.compute import models as compute_models
+from azure.mgmt.resource.resources import models as resource_models
 from devtools_testutils.mgmt_testcase import fake_settings
 from glance_store._drivers.azure.store import Store
 from glance_store._drivers.azure.store import StoreLocation
@@ -24,10 +24,13 @@ from glance_store.location import Location
 from glance_store.tests import base
 from oslo_config import cfg
 
-DATA_DIR = os.path.dirname(os.path.abspath(__file__)) + '/data'
-
 RESOURCE_GROUP = 'omni_test_group'
 CLIENT_SECRET = 'fake_key'
+
+
+def get_fake_resource_group(client, resource_group):
+    resource_group = resource_models.Resource(location='eastus')
+    return resource_group
 
 
 def fake_get_credentials(tenant_id, client_id, client_secret):
@@ -35,9 +38,9 @@ def fake_get_credentials(tenant_id, client_id, client_secret):
 
 
 def fake_get_image(compute, resource_group, name):
-    storage_profile = models.ImageStorageProfile(
-        models.ImageOSDisk('Linux', 'Generalized'))
-    _image = models.Image(location='eastus')
+    storage_profile = compute_models.ImageStorageProfile(
+        compute_models.ImageOSDisk('Linux', 'Generalized'))
+    _image = compute_models.Image(location='eastus')
     _image.storage_profile = storage_profile
     return _image
 
@@ -59,7 +62,10 @@ class AzureGlanceTestCase(base.StoreBaseTest):
         self.scheme = "azure"
 
     @mock.patch('glance_store._drivers.azure.utils.get_image')
-    def test_get_size(self, mock_get):
+    @mock.patch(
+        "glance_store._drivers.azure.utils.check_resource_existence")
+    def test_get_size(self, mock_check, mock_get):
+        mock_check.side_effect = get_fake_resource_group
         mock_get.side_effect = fake_get_image
         store_specs = {}
         attrs_values = [
