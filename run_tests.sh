@@ -40,7 +40,6 @@ copy_cinder_files() {
 
 copy_glance_files() {
     cp -R $WORKSPACE/glance/glance_store/tests/unit/ $DIRECTORY/$GLANCE/glance_store/tests
-    cp $WORKSPACE/glance/gce/gceutils.py $DIRECTORY/$GLANCE/glance_store/_drivers/
     cp -R $WORKSPACE/glance/glance_store/_drivers/ $DIRECTORY/$GLANCE/glance_store/
 }
 
