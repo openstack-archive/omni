@@ -88,7 +88,15 @@ class AzureMechanismDriver(api.MechanismDriver):
             args = (conf.tenant_id, conf.client_id, conf.client_secret,
                     conf.subscription_id)
             self._network_client = utils.get_network_client(*args)
+            self._create_resource_group_if_not_created(conf)
         return self._network_client
+
+    def _create_resource_group_if_not_created(self, conf):
+        is_resource_created = utils.check_resource_existence(
+            self.resource_client, conf.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(
+                self.resource_client, conf.resource_group, conf.region)
 
     def _azure_network_name(self, context):
         return 'net-' + context.current[api.ID]
@@ -283,11 +291,10 @@ class AzureMechanismDriver(api.MechanismDriver):
         sg_name = self._azure_secgrp_id(rule['security_group_id'])
         name = self._azure_secrule_id(rule['id'])
         sg = utils.get_sg(net_svc, resource_group, sg_name)
-        """Each Azure security rule has a priority.
-        The value can be between 100 and 4096. The priority number must be
-        unique for each rule in the collection. The lower the priority number,
-        the higher the priority of the rule.
-        """
+        # Each Azure security rule has a priority.
+        # The value can be between 100 and 4096. The priority number must be
+        # unique for each rule in the collection. The lower the priority
+        # number, the higher the priority of the rule.
         previous_priorities = sorted([i.priority for i in sg.security_rules])
         if previous_priorities:
             priority = previous_priorities[-1] + 1
