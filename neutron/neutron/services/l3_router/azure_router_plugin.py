@@ -85,6 +85,7 @@ class AzureRouterPlugin(
             args = (self.tenant_id, self.client_id, self.client_secret,
                     self.subscription_id)
             self._compute_client = utils.get_compute_client(*args)
+            self._create_resource_group_if_not_created()
         return self._compute_client
 
     @property
@@ -94,6 +95,16 @@ class AzureRouterPlugin(
                     self.subscription_id)
             self._network_client = utils.get_network_client(*args)
         return self._network_client
+
+    def _create_resource_group_if_not_created(self):
+        resource_client = utils.get_resource_client(
+            self.tenant_id, self.client_id, self.client_secret,
+            self.subscription_id)
+        is_resource_created = utils.check_resource_existence(
+            resource_client, self.resource_group)
+        if not is_resource_created:
+            utils.create_resource_group(
+                resource_client, self.resource_group, self.region)
 
     def get_plugin_type(self):
         return plugin_type
