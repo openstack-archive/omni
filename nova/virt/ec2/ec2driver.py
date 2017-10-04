@@ -22,6 +22,7 @@ import time
 import uuid
 
 from boto import ec2
+from boto.ec2 import cloudwatch
 from boto import exception as boto_exc
 from boto.exception import EC2ResponseError
 from boto.regioninfo import RegionInfo
@@ -189,7 +190,7 @@ class EC2Driver(driver.ComputeDriver):
             aws_secret_access_key=CONF.AWS.secret_key,
             region=region)
 
-        self.cloudwatch_conn = ec2.cloudwatch.connect_to_region(
+        self.cloudwatch_conn = cloudwatch.connect_to_region(
             aws_region, aws_access_key_id=CONF.AWS.access_key,
             aws_secret_access_key=CONF.AWS.secret_key)
 
