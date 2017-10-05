@@ -52,10 +52,15 @@ class StoreLocation(location.StoreLocation):
     def _parse_attrs(self, attrs_info):
         attrs_list = attrs_info.strip('/').split('/')
         self.glance_id = attrs_list.pop()
-        attrs_dict = {
-            attrs_list[i].lower(): attrs_list[i + 1]
-            for i in range(0, len(attrs_list), 2)
-        }
+        try:
+            attrs_dict = {
+                attrs_list[i].lower(): attrs_list[i + 1]
+                for i in range(0, len(attrs_list), 2)
+            }
+        except IndexError:
+            raise exceptions.BadStoreUri(
+                message="Image URI should contain required attributes")
+
         if self._sorted_uri_attrs != sorted(attrs_dict.keys()):
             raise exceptions.BadStoreUri(
                 message="Image URI should contain required attributes")
@@ -75,7 +80,6 @@ class StoreLocation(location.StoreLocation):
         pieces = urllib.parse.urlparse(uri)
         self.scheme = pieces.scheme
         self._parse_attrs(pieces.netloc + pieces.path)
-        self.image_name = self.images
 
 
 class Store(driver.Store):
@@ -120,7 +124,7 @@ class Store(driver.Store):
         return '%s://generic' % self.scheme, self.get_size(location, context)
 
     def get_size(self, location, context=None):
-        image_name = location.store_location.image_name.split("/")[-1]
+        image_name = location.store_location.images.split("/")[-1]
         response = utils.get_image(self.azure_client, self.resource_group,
                                    image_name)
         size = response.storage_profile.os_disk.disk_size_gb
