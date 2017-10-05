@@ -41,6 +41,7 @@ class StoreLocation(location.StoreLocation):
         self.scheme = self.specs.get('scheme', STORE_SCHEME)
         for attr in self.uri_attrs:
             setattr(self, attr, self.specs.get(attr))
+        self.image_name = self.images
 
     def get_uri(self):
         _uri_path = []
@@ -52,10 +53,15 @@ class StoreLocation(location.StoreLocation):
     def _parse_attrs(self, attrs_info):
         attrs_list = attrs_info.strip('/').split('/')
         self.glance_id = attrs_list.pop()
-        attrs_dict = {
-            attrs_list[i].lower(): attrs_list[i + 1]
-            for i in range(0, len(attrs_list), 2)
-        }
+        try:
+            attrs_dict = {
+                attrs_list[i].lower(): attrs_list[i + 1]
+                for i in range(0, len(attrs_list), 2)
+            }
+        except IndexError:
+            raise exceptions.BadStoreUri(
+                message="Image URI should contain required attributes")
+
         if self._sorted_uri_attrs != sorted(attrs_dict.keys()):
             raise exceptions.BadStoreUri(
                 message="Image URI should contain required attributes")
