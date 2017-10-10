@@ -26,6 +26,7 @@ NEUTRON="neutron"
 # Tests to Run
 GCE_TEST="test_gce"
 AWS_TEST="test_ec2"
+AZURE_TEST="test_azure"
 AWS_NOVA_TEST="test_ec2.EC2DriverTestCase"
 AWS_KEYPAIR_TEST="test_keypair.KeyPairNotificationsTestCase"
 
@@ -89,7 +90,7 @@ copy_glance_files
 copy_neutron_files
 
 echo "============Running tests============"
-run_tests $CINDER "$GCE_TEST|$AWS_TEST" &
+run_tests $CINDER "$GCE_TEST|$AWS_TEST|$AZURE_TEST" &
 run_tests $NOVA "$GCE_TEST|$AWS_NOVA_TEST|$AWS_KEYPAIR_TEST" &
 run_tests $GLANCE "$GCE_TEST" &
 run_tests $NEUTRON "$GCE_TEST|$AWS_TEST" &
