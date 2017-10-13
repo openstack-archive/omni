@@ -52,6 +52,7 @@ class AzureMechanismDriver(api.MechanismDriver):
     def __init__(self):
         super(AzureMechanismDriver, self).__init__()
         self._network_client = None
+        self._resource_client = None
         self._sg_callback_map = {}
 
     def initialize(self):
@@ -92,11 +93,15 @@ class AzureMechanismDriver(api.MechanismDriver):
         return self._network_client
 
     def _create_resource_group_if_not_created(self, conf):
+        if self._resource_client is None:
+            args = (conf.tenant_id, conf.client_id, conf.client_secret,
+                    conf.subscription_id)
+            self._resource_client = utils.get_resource_client(*args)
         is_resource_created = utils.check_resource_existence(
-            self.resource_client, conf.resource_group)
+            self._resource_client, conf.resource_group)
         if not is_resource_created:
             utils.create_resource_group(
-                self.resource_client, conf.resource_group, conf.region)
+                self._resource_client, conf.resource_group, conf.region)
 
     def _azure_network_name(self, context):
         return 'net-' + context.current[api.ID]
