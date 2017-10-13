@@ -92,11 +92,14 @@ class AzureMechanismDriver(api.MechanismDriver):
         return self._network_client
 
     def _create_resource_group_if_not_created(self, conf):
+        args = (conf.tenant_id, conf.client_id, conf.client_secret,
+                conf.subscription_id)
+        resource_client = utils.get_resource_client(*args)
         is_resource_created = utils.check_resource_existence(
-            self.resource_client, conf.resource_group)
+            resource_client, conf.resource_group)
         if not is_resource_created:
             utils.create_resource_group(
-                self.resource_client, conf.resource_group, conf.region)
+                resource_client, conf.resource_group, conf.region)
 
     def _azure_network_name(self, context):
         return 'net-' + context.current[api.ID]
