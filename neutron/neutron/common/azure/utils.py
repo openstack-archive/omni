@@ -211,7 +211,7 @@ def convert_sg_rule(openstack_rule, priority=None):
     protocol = openstack_rule['protocol']
     if protocol is None:
         sg_rule['protocol'] = '*'
-    if protocol and protocol in protocols:
+    elif protocol and protocol in protocols:
         sg_rule['protocol'] = protocols[protocol]
     else:
         raise sg.SecurityGroupRuleInvalidProtocol(
