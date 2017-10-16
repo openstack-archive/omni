@@ -151,7 +151,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.return_value = 'ami-1234abc'
-            mock_network.return_value = (self.subnet_id, '192.168.10.5', None,
+            mock_network.return_value = (self.subnet_id, '192.168.100.5', None,
                                          None)
             mock_secgrp.return_value = []
             self._create_nova_vm()
@@ -246,7 +246,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.return_value = 'ami-1234abc'
-            mock_network.return_value = (self.subnet_id, '192.168.10.5', None,
+            mock_network.return_value = (self.subnet_id, '192.168.100.5', None,
                                          None)
             mock_secgrp.return_value = []
             self._create_nova_vm()
@@ -273,7 +273,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.return_value = 'ami-1234abc'
-            mock_network.return_value = (self.subnet_id, '192.168.10.5', None,
+            mock_network.return_value = (self.subnet_id, '192.168.100.5', None,
                                          None)
             mock_secgrp.return_value = []
             self._create_nova_vm()
@@ -298,7 +298,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.return_value = 'ami-1234abc'
-            mock_network.return_value = (self.subnet_id, '192.168.10.5', None,
+            mock_network.return_value = (self.subnet_id, '192.168.100.5', None,
                                          None)
             mock_secgrp.return_value = []
             fake_run_instance_op = self.fake_ec2_conn.run_instances(
@@ -312,7 +312,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             boto.ec2.EC2Connection.run_instances.assert_called_once_with(
                 instance_type='t2.small', key_name=None,
                 image_id='ami-1234abc', user_data=userdata,
-                subnet_id=self.subnet_id, private_ip_address='192.168.10.5',
+                subnet_id=self.subnet_id, private_ip_address='192.168.100.5',
                 security_group_ids=[])
         self.reset()
 
@@ -340,7 +340,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.return_value = 'ami-1234abc'
-            mock_network.return_value = (None, '192.168.10.5', None, None)
+            mock_network.return_value = (None, '192.168.100.5', None, None)
             mock_secgrp.return_value = []
             self.assertRaises(exception.BuildAbortException,
                               self._create_nova_vm)
@@ -356,7 +356,7 @@ class EC2DriverTestCase(test.NoDBTestCase):
             mock.patch.object(EC2Driver, '_get_instance_sec_grps'),
         ) as (mock_image, mock_network, mock_secgrp):
             mock_image.side_effect = exception.BuildAbortException('fake')
-            mock_network.return_value = ('subnet-1234abc', '192.168.10.5',
+            mock_network.return_value = ('subnet-1234abc', '192.168.100.5',
                                          None, None)
             mock_secgrp.return_value = []
             self.assertRaises(exception.BuildAbortException,

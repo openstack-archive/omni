@@ -20,8 +20,8 @@ from neutron.common import gceconf
 from neutron.common import gceutils
 from neutron.extensions import securitygroup as sg
 from neutron.manager import NeutronManager
-from neutron.plugins.ml2 import driver_api as api
 from neutron_lib import exceptions as e
+from neutron_lib.plugins.ml2 import api
 from oslo_log import log
 
 import ipaddr

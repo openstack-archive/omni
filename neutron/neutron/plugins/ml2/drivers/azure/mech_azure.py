@@ -22,9 +22,9 @@ from neutron.callbacks import resources
 from neutron.common.azure.config import azure_conf
 from neutron.common.azure import utils
 from neutron.manager import NeutronManager
-from neutron.plugins.ml2 import driver_api as api
 from neutron_lib import constants as n_const
 from neutron_lib import exceptions as e
+from neutron_lib.plugins.ml2 import api
 
 try:
     from neutron_lib.plugins import directory

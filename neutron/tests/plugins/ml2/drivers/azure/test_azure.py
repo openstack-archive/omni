@@ -16,13 +16,13 @@ from devtools_testutils.mgmt_testcase import fake_settings
 from neutron.common.azure import utils
 from neutron.extensions import securitygroup as sg
 from neutron.manager import NeutronManager
-from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers.azure.mech_azure import azure_conf
 from neutron.plugins.ml2.drivers.azure.mech_azure import AzureMechanismDriver
 from neutron.tests import base
 from neutron.tests.common.azure import azure_mock
-from neutron_lib import exceptions
 from neutron_lib import constants as const
+from neutron_lib import exceptions
+from neutron_lib.plugins.ml2 import api
 
 import mock
 
