@@ -21,8 +21,8 @@ from neutron.plugins.ml2.drivers.azure.mech_azure import azure_conf
 from neutron.plugins.ml2.drivers.azure.mech_azure import AzureMechanismDriver
 from neutron.tests import base
 from neutron.tests.common.azure import azure_mock
-from neutron_lib import exceptions
 from neutron_lib import constants as const
+from neutron_lib import exceptions
 
 import mock
 
