@@ -438,7 +438,7 @@ class EC2Driver(driver.ComputeDriver):
         self._wait_for_image_state(ec2_image_id, "available")
 
         image_api = glance.get_default_image_service()
-        image_ref = glance.generate_image_url(image_id)
+        image_ref = glance.generate_image_url(image_id, context)
 
         metadata = {'is_public': False,
                     'location': image_ref,

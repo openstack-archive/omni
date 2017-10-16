@@ -16,6 +16,11 @@ from azure.mgmt.resource.resources import models as resource_models
 from devtools_testutils.mgmt_testcase import fake_settings
 
 
+class Response(object):
+    def __init__(self):
+        self.status_code = 400
+
+
 class FakeNeutronManager(object):
     def get_security_group_rule(self, context, rule_id):
         data = {'id': 'fake_rule_id',
@@ -64,7 +69,17 @@ def get_fake_sg(client, resource_group, sg_name):
 
 def get_fake_nic(client, resource_group, nic_name):
     nic = network_models.NetworkInterface()
+    ip_configurations = network_models.IPConfiguration()
+    ip_configurations.name = "fake_ip_configuration_name"
+    nic.ip_configurations = [ip_configurations]
     return nic
+
+
+def get_fake_public_ip(client, resource_group, region):
+    public_ip = network_models.PublicIPAddress()
+    public_ip.ip_address = "192.168.1.5"
+    public_ip.name = "fake_public_ip"
+    return public_ip
 
 
 def create_anything(*args, **kwargs):
