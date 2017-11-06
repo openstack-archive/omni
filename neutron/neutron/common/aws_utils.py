@@ -271,10 +271,10 @@ class AwsUtils(object):
 
     @aws_exception
     def delete_vpc(self, vpc_id, dry_run=False):
-        self._get_ec2_client().delete_vpc(
-            DryRun=dry_run,
-            VpcId=vpc_id
-        )
+        sg_id_list = self.get_sec_group_by_vpc_id(vpc_id, dry_run)
+        for sg_id in sg_id_list:
+            self.delete_security_group_by_id(sg_id)
+        self._get_ec2_client().delete_vpc(DryRun=dry_run, VpcId=vpc_id)
 
     @aws_exception
     def create_tags_for_vpc(self, neutron_network_id, tags_list):
@@ -507,6 +507,19 @@ class AwsUtils(object):
                 message='Timed out creating tags on security group',
                 error_code='Time Out')
         return secgrp
+
+    @aws_exception
+    def get_sec_group_by_vpc_id(self, vpc_id, dry_run=False):
+        filters = [{'Name': 'vpc-id',
+                    'Values': [vpc_id]}]
+        response = self._get_ec2_client().describe_security_groups(
+            DryRun=dry_run, Filters=filters)
+        sg_id_list = []
+        if 'SecurityGroups' in response:
+            for sg in response['SecurityGroups']:
+                if sg['GroupName'] != 'default':
+                    sg_id_list.append(sg['GroupId'])
+        return sg_id_list
 
     @aws_exception
     def get_sec_group_by_id(self, secgrp_id, vpc_id=None, dry_run=False):
