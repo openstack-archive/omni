@@ -283,7 +283,7 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         mock_delip.return_value = None
         mock_relip.return_value = None
 
-        # Case 4: allocate_floatingip returns an excpetion
+        # Case 4: allocate_floatingip returns an exception
         mock_allocateip.side_effect = exceptions.PhysicalNetworkNameError()
         self.assertRaises(exceptions.PhysicalNetworkNameError,
                           self._driver.create_floatingip,
