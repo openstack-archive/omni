@@ -1,0 +1,10 @@
+/var/log/credsmgr/*.log {
+    daily
+    rotate 10
+    missingok
+    compress
+    delaycompress
+    notifempty
+    minsize 100k
+    copytruncate
+}

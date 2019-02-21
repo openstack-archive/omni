@@ -21,15 +21,11 @@ from neutron.callbacks import registry
 from neutron.callbacks import resources
 from neutron.common.azure.config import azure_conf
 from neutron.common.azure import utils
-from neutron.manager import NeutronManager
 from neutron.plugins.ml2 import driver_api as api
 from neutron_lib import constants as n_const
 from neutron_lib import exceptions as e
+from neutron_lib.plugins import directory
 
-try:
-    from neutron_lib.plugins import directory
-except ImportError:
-    pass
 
 LOG = log.getLogger(__name__)
 
@@ -271,17 +267,11 @@ class AzureMechanismDriver(api.MechanismDriver):
         pass
 
     def get_secgrp(self, context, id):
-        try:
-            core_plugin = NeutronManager.get_plugin()
-        except AttributeError:
-            core_plugin = directory.get_plugin()
+        core_plugin = directory.get_plugin()
         return core_plugin.get_security_group(context, id)
 
     def get_secgrp_rule(self, context, id):
-        try:
-            core_plugin = NeutronManager.get_plugin()
-        except AttributeError:
-            core_plugin = directory.get_plugin()
+        core_plugin = directory.get_plugin()
         return core_plugin.get_security_group_rule(context, id)
 
     def _validate_secrule(self, **kwargs):
