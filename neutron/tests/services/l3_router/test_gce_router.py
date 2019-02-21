@@ -362,3 +362,4 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
             self.context, router_id, interface_info))
         mock_remove_interface.assert_called_once_with(
             self.context, router_id, interface_info)
+
