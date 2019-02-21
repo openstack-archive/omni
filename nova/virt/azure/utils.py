@@ -156,3 +156,7 @@ def get_image(compute, resource_group, name):
 @azure_handle_exception
 def delete_disk(compute, resource_group, name):
     return compute.disks.delete(resource_group, name)
+
+
+def get_instance_view(compute, resource_group, name):
+    return compute.virtual_machines.instance_view(resource_group, name)

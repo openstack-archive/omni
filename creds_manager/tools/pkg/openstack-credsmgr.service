@@ -1,0 +1,20 @@
+[Unit]
+Description=Omni Credential Manager service
+After=network.target
+ConditionPathExists=/opt/pf9/credsmgr/bin/python
+ConditionPathExists=/opt/pf9/credsmgr/bin/credsmgr-api
+
+[Service]
+Type=simple
+User=credsmgr
+Group=credsmgr
+WorkingDirectory=/opt/pf9/credsmgr
+ExecStart=/opt/pf9/credsmgr/bin/python /opt/pf9/credsmgr/bin/credsmgr-api --config-file /etc/credsmgr/credsmgr.conf
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=credsmgr_api
+PIDFile=/var/run/credsmgr/credsmgr.pid
+PermissionsStartOnly=True
+
+[Install]
+WantedBy=multi-user.target

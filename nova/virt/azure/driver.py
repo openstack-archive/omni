@@ -20,6 +20,9 @@ from nova import exception
 from nova.virt.azure.config import azure_conf as drv_conf
 from nova.virt.azure.config import nova_conf
 from nova.virt.azure import constants
+# PF9 Start
+from nova.virt.azure.extension import pf9_extend_driver
+# PF9 End
 from nova.virt.azure import utils
 from nova.virt import driver
 from nova.virt import hardware
@@ -56,6 +59,9 @@ class AzureDriver(driver.ComputeDriver):
         self._uuid_to_omni_instance = {}
         self._drv_nodes = None
         self.flavor_info = {}
+        # PF9 Start
+        pf9_extend_driver(self)
+        # PF9 End
 
     def init_host(self, host):
         """Initialize anything that is necessary for the driver to function"""
@@ -130,6 +136,11 @@ class AzureDriver(driver.ComputeDriver):
     def unplug_vifs(self, instance, network_info):
         """Unplug VIFs from networks."""
         raise NotImplementedError()
+
+    def _get_diagnostics_profile(self):
+        uri = "https://{0}.blob.core.windows.net/".format(
+            drv_conf.storage_account_name)
+        return {'boot_diagnostics': {'enabled': True, 'storage_uri': uri}}
 
     def _get_hardware_profile(self, flavor):
         return {'vm_size': flavor.name}
@@ -206,6 +217,9 @@ class AzureDriver(driver.ComputeDriver):
             'storage_profile': storage_profile,
             'network_profile': network_profile
         }
+        if drv_conf.storage_account_name != "":
+            diagnostics_profile = self._get_diagnostics_profile()
+            vm_profile['diagnostics_profile'] = diagnostics_profile
         return vm_profile
 
     def _azure_instance_name(self, instance):
@@ -553,6 +567,19 @@ class AzureDriver(driver.ComputeDriver):
             self.compute_client, drv_conf.resource_group, azure_name)
         state = self._get_power_state(azure_instance)
         return hardware.InstanceInfo(state=state)
+
+    def get_console_output(self, context, instance):
+        azure_name = self._get_omni_name_from_instance(instance)
+        if drv_conf.storage_account_name != "":
+            LOG.info("Getting connsole output from azure instance: %s",
+                     azure_name)
+            output = utils.get_instance_view(
+                self.compute_client, drv_conf.resource_group, azure_name)
+            return output.boot_diagnostics.serial_console_log_blob_uri
+        raise exception.ConsoleLogOutputException(
+            instance_id=instance.uuid,
+            reason="Cannot get console logs as Azure storage account name has "
+            "not been configured for instance %s" % azure_name)
 
     def allow_key(self, key):
         DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']

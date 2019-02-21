@@ -228,3 +228,59 @@ class GCENovaTestCase(test.NoDBTestCase):
                                                   self._driver.gce_project,
                                                   image_id,
                                                   snapshot_link + image_id)
+
+    # PF9 : Start
+    @mock.patch('nova.virt.gce.driver.gceutils.get_disk')
+    @mock.patch('nova.virt.gce.driver.gceutils.get_instances_metadata_key')
+    @mock.patch('nova.virt.gce.driver.gceutils.list_instances')
+    def test_get_instance_info(self, mock_list_instances, mock_get_metadata,
+                               mock_get_disk):
+        mock_list_instances.side_effect = gce_mock.list_instances
+        mock_get_metadata.side_effect = gce_mock.get_instances_metadata_key
+        mock_get_disk.side_effect = gce_mock.get_disk
+        instances_list = self._driver.list_instances()
+        self.assertIsInstance(instances_list, list)
+        self.assertEqual(["instance-1", "instance-2"], instances_list)
+        instance1 = self._driver.get_instance_info(
+            'd4fdab6e-9d28-48d8-9c8e-a3f72cfe5850')
+        self.assertDictEqual({
+            'instance_uuid': 'd4fdab6e-9d28-48d8-9c8e-a3f72cfe5850',
+            'name': u'instance-1',
+            'block_device_mapping_v2': [{
+                'guest_format': 'volume',
+                'boot_index': 0,
+                'volume_id': None,
+                'image_id': None,
+                'snapshot_id': None,
+                'device_name': '',
+                'source_type': 'blank',
+                'destination_type': 'local',
+                'virtual_size': 10,
+                'volume_size': None
+            }],
+            'memory_mb': 3840,
+            'vcpus': 1,
+            'power_state': 1
+        }, instance1)
+        instance2 = self._driver.get_instance_info(
+            '2756dd08-9c4e-4e06-86cb-760771cbf54e')
+        self.assertDictEqual({
+            'instance_uuid': '2756dd08-9c4e-4e06-86cb-760771cbf54e',
+            'name': u'instance-2',
+            'block_device_mapping_v2': [{
+                'guest_format': 'volume',
+                'boot_index': 0,
+                'volume_id': None,
+                'image_id': None,
+                'snapshot_id': None,
+                'device_name': '',
+                'source_type': 'blank',
+                'destination_type': 'local',
+                'virtual_size': 10,
+                'volume_size': None
+            }],
+            'memory_mb': 3840,
+            'vcpus': 1,
+            'power_state': 1
+        }, instance2)
+    # PF9 : End

@@ -27,6 +27,9 @@ from nova.virt import hardware
 from oslo_config import cfg
 from oslo_log import log as logging
 
+# PF9: Start
+from six.moves import urllib
+# PF9: End
 
 LOG = logging.getLogger(__name__)
 _GCE_NODES = None
@@ -57,6 +60,10 @@ CONF.register_group(gce_group)
 CONF.register_opts(gce_opts, group=gce_group)
 
 DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']
+
+# PF9: Start
+PF9_FLAVOR = CONF.PF9.pf9_flavor
+# PF9: End
 
 
 def set_nodes(nodes):
@@ -108,6 +115,9 @@ class GCEDriver(driver.ComputeDriver):
         self.gce_zone = CONF.GCE.zone
         self.gce_project = CONF.GCE.project_id
         self.gce_svc_key = CONF.GCE.service_key_path
+        # PF9: Start
+        self._pf9_stats = {}
+        # PF9: End
 
     def init_host(self, host):
         """Initialize anything that is necessary for the driver to function"""
@@ -704,6 +714,14 @@ class GCEDriver(driver.ComputeDriver):
     def get_vnc_console(self, context, instance):
         raise NotImplementedError()
 
+    def get_console_output(self, context, instance):
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+        gce_id = self._get_gce_name_from_instance(instance)
+        LOG.info("Getting console output for gce instance: %s", gce_id)
+        output = gceutils.get_serial_port_output(compute, project, zone,
+                                                 gce_id)
+        return output
+
     def get_spice_console(self, instance):
         """Simple Protocol for Independent Computing Environments"""
         raise NotImplementedError()
@@ -874,3 +892,105 @@ class GCEDriver(driver.ComputeDriver):
 
             self._uuid_to_gce_instance[openstack_id] = instance
         return self._uuid_to_gce_instance.keys()
+
+    # PF9 : Start
+    def _get_disk_size(self, disk_link):
+        # Eg. URL = projects/<project_name>/zones/<zone>/disks/<disk_name>
+        items = urllib.parse.urlparse(disk_link).path.strip('/').split('/')
+        if len(items) < 4 or items[-2] != 'disks':
+            raise exception.DiskNotFound(location=disk_link)
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+        disk_name = items[-1]
+        try:
+            disk_info = gceutils.get_disk(compute, project, zone, disk_name)
+        except HttpError:
+            raise exception.DiskNotFound(location=disk_link)
+        return int(disk_info['sizeGb'])
+
+    def _get_flavor_info(self, machine_link):
+        # Eg. URL = projects/<project_name>/zones/<zone>/machineTypes/<name>
+        items = urllib.parse.urlparse(machine_link).path.strip('/').split('/')
+        if len(items) < 4 or items[-2] != 'machineTypes':
+            raise exception.FlavorNotFound(flavor_id=machine_link)
+
+        flavor_type = items[-1]
+        if flavor_type in self.gce_flavor_info:
+            return self.gce_flavor_info[flavor_type]
+        else:
+            # Assign PF9 unknown flavor values for Custom flavor
+            return self.gce_flavor_info[PF9_FLAVOR]
+
+    def get_instance_info(self, instance_uuid):
+        retval = {}
+        try:
+            gce_instance = self._uuid_to_gce_instance[instance_uuid]
+            retval['name'] = gce_instance['name']
+            instance_status = gce_instance['status']
+            if instance_status == 'TERMINATED':
+                return {}
+            retval['power_state'] = GCE_STATE_MAP[instance_status]
+            retval['instance_uuid'] = instance_uuid
+            machine_link = gce_instance['machineType']
+            flavor_info = self._get_flavor_info(machine_link)
+            retval['vcpus'] = flavor_info['vcpus']
+            retval['memory_mb'] = flavor_info['memory_mb']
+            bdm = []
+            boot_index = 0
+            for disk in gce_instance['disks']:
+                disk_size = self._get_disk_size(disk['source'])
+                disk_info = {}
+                disk_info['device_name'] = ''
+                disk_info['boot_index'] = boot_index
+                disk_info['guest_format'] = 'volume'
+                disk_info['source_type'] = 'blank'
+                disk_info['virtual_size'] = disk_size
+                disk_info['destination_type'] = 'local'
+                disk_info['snapshot_id'] = None
+                disk_info['volume_id'] = None
+                disk_info['image_id'] = None
+                disk_info['volume_size'] = None
+                bdm.append(disk_info)
+                boot_index += 1
+            retval['block_device_mapping_v2'] = bdm
+            return retval
+        except Exception as e:
+            LOG.exception(
+                'Could not fetch info for %s, error %s' % (
+                    instance_uuid, e))
+            return {}
+
+    def _update_stats_pf9(self, resource_type):
+        """Retrieve physical resource utilization
+        """
+        if resource_type not in self._pf9_stats:
+            self._pf9_stats = {}
+        data = 0
+        self._pf9_stats[resource_type] = data
+        return {resource_type: data}
+
+    def _get_host_stats_pf9(self, res_types, refresh=False):
+        """Return the current physical resource consumption
+        """
+        if refresh or not self._pf9_stats:
+            self._update_stats_pf9(res_types)
+        return self._pf9_stats
+
+    def get_host_stats_pf9(self, res_types, refresh=False, nodename=None):
+        """Return currently known physical resource consumption
+        If 'refresh' is True, run update the stats first.
+        :param res_types: An array of resources to be queried
+        """
+        resource_stats = dict()
+        for resource_type in res_types:
+            LOG.info("Looking for resource: %s" % resource_type)
+            resource_dict = self._get_host_stats_pf9(resource_type,
+                                                     refresh=refresh)
+            resource_stats.update(resource_dict)
+        return resource_stats
+
+    def get_all_networks_pf9(self, node):
+        pass
+
+    def get_all_ip_mapping_pf9(self, needed_uuids=None):
+        return {}
+    # PF9 : End

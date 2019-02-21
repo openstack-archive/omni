@@ -1,0 +1,10 @@
+#!/usr/bin/expect
+
+set timeout 15
+spawn bash -c "rpm --resign $argv"
+match_max 100000
+expect -exact "Enter pass phrase: "
+send -- "\r"
+expect "Pass phrase is good."
+expect eof
+
