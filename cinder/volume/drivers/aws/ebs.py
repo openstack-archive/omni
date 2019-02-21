@@ -13,9 +13,9 @@ limitations under the License.
 
 import time
 
-from boto import ec2
-from boto.exception import EC2ResponseError
-from boto.regioninfo import RegionInfo
+import boto3
+
+from botocore.exceptions import ClientError
 from cinder.exception import APITimeout
 from cinder.exception import ImageNotFound
 from cinder.exception import InvalidConfigurationValue
@@ -23,34 +23,13 @@ from cinder.exception import NotFound
 from cinder.exception import VolumeBackendAPIException
 from cinder.exception import VolumeNotFound
 from cinder.volume.driver import BaseVD
-from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
-from oslo_config import cfg
+
+from cinder.volume.drivers.aws.config import CONF
+from cinder.volume.drivers.aws.credshelper import get_credentials
+
 from oslo_log import log as logging
 from oslo_service import loopingcall
 
-aws_group = cfg.OptGroup(name='AWS',
-                         title='Options to connect to an AWS environment')
-aws_opts = [
-    cfg.StrOpt('secret_key', help='Secret key of AWS account', secret=True),
-    cfg.StrOpt('access_key', help='Access key of AWS account', secret=True),
-    cfg.StrOpt('region_name', help='AWS region'),
-    cfg.StrOpt('az', help='AWS availability zone'),
-    cfg.IntOpt('wait_time_min', help='Maximum wait time for AWS operations',
-               default=5)
-]
-
-ebs_opts = [
-    cfg.StrOpt('ebs_pool_name', help='Storage pool name'),
-    cfg.IntOpt('ebs_free_capacity_gb',
-               help='Free space available on EBS storage pool', default=1024),
-    cfg.IntOpt('ebs_total_capacity_gb',
-               help='Total space available on EBS storage pool', default=1024)
-]
-
-CONF = cfg.CONF
-CONF.register_group(aws_group)
-CONF.register_opts(aws_opts, group=aws_group)
-CONF.register_opts(ebs_opts)
 LOG = logging.getLogger(__name__)
 
 
@@ -61,107 +40,107 @@ class EBSDriver(BaseVD):
         self.VERSION = '1.0.0'
         self._wait_time_sec = 60 * (CONF.AWS.wait_time_min)
 
+    def do_setup(self, context):
+        self._check_config()
+        self.az = CONF.AWS.az
+        self.set_initialized()
+
     def _check_config(self):
-        tbl = dict([(n, eval(n)) for n in ['CONF.AWS.access_key',
-                                           'CONF.AWS.secret_key',
-                                           'CONF.AWS.region_name',
+        tbl = dict([(n, eval(n)) for n in ['CONF.AWS.region_name',
                                            'CONF.AWS.az']])
         for k, v in tbl.iteritems():
             if v is None:
                 raise InvalidConfigurationValue(value=None, option=k)
 
-    def do_setup(self, context):
-        self._check_config()
-        region_name = CONF.AWS.region_name
-        endpoint = '.'.join(['ec2', region_name, 'amazonaws.com'])
-        region = RegionInfo(name=region_name, endpoint=endpoint)
-        self._conn = ec2.EC2Connection(
-            aws_access_key_id=CONF.AWS.access_key,
-            aws_secret_access_key=CONF.AWS.secret_key,
-            region=region)
-        # resort to first AZ for now. TODO(do_setup): expose this through API
-        az = CONF.AWS.az
+    def _ec2_client(self, context, project_id=None):
+        creds = get_credentials(context, project_id=project_id)
+        return boto3.client(
+            "ec2", region_name=CONF.AWS.region_name,
+            aws_access_key_id=creds['aws_access_key_id'],
+            aws_secret_access_key=creds['aws_secret_access_key'],)
 
-        try:
-            self._zone = filter(lambda z: z.name == az,
-                                self._conn.get_all_zones())[0]
-        except IndexError:
-            raise AvailabilityZoneNotFound(az=az)
-
-        self.set_initialized()
-
-    def _wait_for_create(self, id, final_state):
+    def _wait_for_create(self, ec2_conn, ec2_id, final_state,
+                         is_snapshot=False):
         def _wait_for_status(start_time):
             current_time = time.time()
 
             if current_time - start_time > self._wait_time_sec:
                 raise loopingcall.LoopingCallDone(False)
 
-            obj = self._conn.get_all_volumes([id])[0]
-            if obj.status == final_state:
-                raise loopingcall.LoopingCallDone(True)
+            try:
+                if is_snapshot:
+                    resp = ec2_conn.describe_snapshots(SnapshotIds=[ec2_id])
+                    obj = resp['Snapshots'][0]
+                else:
+                    resp = ec2_conn.describe_volumes(VolumeIds=[ec2_id])
+                    obj = resp['Volumes'][0]
 
+                if obj['State'] == final_state:
+                    raise loopingcall.LoopingCallDone(True)
+            except ClientError as e:
+                LOG.warn(e.message)
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status,
                                                      time.time())
-        return timer.start(interval=5).wait()
+        return timer.start(interval=10).wait()
 
-    def _wait_for_snapshot(self, id, final_state):
-        def _wait_for_status(start_time):
-
-            if time.time() - start_time > self._wait_time_sec:
-                raise loopingcall.LoopingCallDone(False)
-
-            obj = self._conn.get_all_snapshots([id])[0]
-            if obj.status == final_state:
-                raise loopingcall.LoopingCallDone(True)
-
-        timer = loopingcall.FixedIntervalLoopingCall(_wait_for_status,
-                                                     time.time())
-        return timer.start(interval=5).wait()
-
-    def _wait_for_tags_creation(self, id, volume):
+    def _wait_for_tags_creation(self, ec2_conn, ec2_id, ostack_obj,
+                                is_clone=False, is_snapshot=False):
         def _wait_for_completion(start_time):
             if time.time() - start_time > self._wait_time_sec:
                 raise loopingcall.LoopingCallDone(False)
-            self._conn.create_tags([id],
-                                   {'project_id': volume['project_id'],
-                                    'uuid': volume['id'],
-                                    'is_clone': True,
-                                    'created_at': volume['created_at'],
-                                    'Name': volume['display_name']})
-            obj = self._conn.get_all_volumes([id])[0]
-            if obj.tags:
+            tags = [
+                {'Key': 'project_id', 'Value': ostack_obj['project_id']},
+                {'Key': 'uuid', 'Value': ostack_obj['id']},
+                {'Key': 'is_clone', 'Value': str(is_clone)},
+                {'Key': 'created_at', 'Value': str(ostack_obj['created_at'])},
+                {'Key': 'Name', 'Value': ostack_obj['display_name']},
+            ]
+            ec2_conn.create_tags(Resources=[ec2_id], Tags=tags)
+            if is_snapshot:
+                resp = ec2_conn.describe_snapshots(SnapshotIds=[ec2_id])
+                obj = resp['Snapshots'][0]
+            else:
+                resp = ec2_conn.describe_volumes(VolumeIds=[ec2_id])
+                obj = resp['Volumes'][0]
+            if 'Tags' in obj and obj['Tags']:
                 raise loopingcall.LoopingCallDone(True)
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_completion,
                                                      time.time())
-        return timer.start(interval=5).wait()
+        return timer.start(interval=10).wait()
 
     def create_volume(self, volume):
         size = volume['size']
-        ebs_vol = self._conn.create_volume(size, self._zone)
-        if self._wait_for_create(ebs_vol.id, 'available') is False:
+        ec2_conn = self._ec2_client(
+            volume.obj_context, project_id=volume.project_id)
+        ebs_vol = ec2_conn.create_volume(Size=size, AvailabilityZone=self.az)
+        vol_id = ebs_vol['VolumeId']
+        if not self._wait_for_create(ec2_conn, vol_id, 'available'):
             raise APITimeout(service='EC2')
-        self._conn.create_tags([ebs_vol.id],
-                               {'project_id': volume['project_id'],
-                                'uuid': volume['id'],
-                                'is_clone': False,
-                                'created_at': volume['created_at'],
-                                'Name': volume['display_name']})
-
-    def _find(self, obj_id, find_func):
-        ebs_objs = find_func(filters={'tag:uuid': obj_id})
-        if len(ebs_objs) == 0:
-            raise NotFound()
-        ebs_obj = ebs_objs[0]
-        return ebs_obj
+        if not self._wait_for_tags_creation(ec2_conn, vol_id, volume):
+            raise APITimeout(service='EC2')
 
     def delete_volume(self, volume):
+        ec2_conn = self._ec2_client(
+            volume.obj_context, project_id=volume.project_id)
         try:
-            ebs_vol = self._find(volume['id'], self._conn.get_all_volumes)
+            ebs_vol = self._find(volume['id'], ec2_conn.describe_volumes)
         except NotFound:
             LOG.error('Volume %s was not found' % volume['id'])
             return
-        self._conn.delete_volume(ebs_vol.id)
+        ec2_conn.delete_volume(VolumeId=ebs_vol['VolumeId'])
+
+    def _find(self, obj_id, find_func, is_snapshot=False):
+        ebs_objs = find_func(Filters=[{'Name': 'tag:uuid',
+                                       'Values': [obj_id]}])
+        if is_snapshot:
+            if len(ebs_objs['Snapshots']) == 0:
+                raise NotFound()
+            ebs_obj = ebs_objs['Snapshots'][0]
+        else:
+            if len(ebs_objs['Volumes']) == 0:
+                raise NotFound()
+            ebs_obj = ebs_objs['Volumes'][0]
+        return ebs_obj
 
     def check_for_setup_error(self):
         # TODO(check_setup_error) throw errors if AWS config is broken
@@ -177,11 +156,13 @@ class EBSDriver(BaseVD):
         pass
 
     def initialize_connection(self, volume, connector, initiator_data=None):
+        ec2_conn = self._ec2_client(
+            volume.obj_context, project_id=volume.project_id)
         try:
-            ebs_vol = self._find(volume.id, self._conn.get_all_volumes)
+            ebs_vol = self._find(volume.id, ec2_conn.describe_volumes)
         except NotFound:
             raise VolumeNotFound(volume_id=volume.id)
-        conn_info = dict(data=dict(volume_id=ebs_vol.id))
+        conn_info = dict(data=dict(volume_id=ebs_vol['VolumeId']))
         return conn_info
 
     def terminate_connection(self, volume, connector, **kwargs):
@@ -213,63 +194,73 @@ class EBSDriver(BaseVD):
         return self._stats
 
     def create_snapshot(self, snapshot):
-        os_vol = snapshot['volume']
+        vol_id = snapshot['volume_id']
+        ec2_conn = self._ec2_client(
+            snapshot.obj_context, project_id=snapshot.project_id)
         try:
-            ebs_vol = self._find(os_vol['id'], self._conn.get_all_volumes)
+            ebs_vol = self._find(vol_id, ec2_conn.describe_volumes)
         except NotFound:
-            raise VolumeNotFound(os_vol['id'])
+            raise VolumeNotFound(volume_id=vol_id)
 
-        ebs_snap = self._conn.create_snapshot(ebs_vol.id)
-        if self._wait_for_snapshot(ebs_snap.id, 'completed') is False:
+        ebs_snap = ec2_conn.create_snapshot(VolumeId=ebs_vol['VolumeId'])
+        if not self._wait_for_create(ec2_conn, ebs_snap['SnapshotId'],
+                                     'completed', is_snapshot=True):
+            raise APITimeout(service='EC2')
+        if not self._wait_for_tags_creation(ec2_conn, ebs_snap['SnapshotId'],
+                                            snapshot, True, True):
             raise APITimeout(service='EC2')
 
-        self._conn.create_tags([ebs_snap.id],
-                               {'project_id': snapshot['project_id'],
-                                'uuid': snapshot['id'],
-                                'is_clone': True,
-                                'created_at': snapshot['created_at'],
-                                'Name': snapshot['display_name']})
-
     def delete_snapshot(self, snapshot):
+        ec2_conn = self._ec2_client(
+            snapshot.obj_context, project_id=snapshot.project_id)
         try:
-            ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
+            ebs_ss = self._find(snapshot['id'], ec2_conn.describe_snapshots,
+                                is_snapshot=True)
         except NotFound:
             LOG.error('Snapshot %s was not found' % snapshot['id'])
             return
-        self._conn.delete_snapshot(ebs_ss.id)
+        ec2_conn.delete_snapshot(SnapshotId=ebs_ss['SnapshotId'])
 
     def create_volume_from_snapshot(self, volume, snapshot):
+        ec2_conn = self._ec2_client(
+            volume.obj_context, project_id=volume.project_id)
         try:
-            ebs_ss = self._find(snapshot['id'], self._conn.get_all_snapshots)
+            ebs_ss = self._find(snapshot['id'], ec2_conn.describe_snapshots,
+                                is_snapshot=True)
         except NotFound:
             LOG.error('Snapshot %s was not found' % snapshot['id'])
             raise
-        ebs_vol = ebs_ss.create_volume(self._zone)
+        ebs_vol = ec2_conn.create_volume(AvailabilityZone=self.az,
+                                         SnapshotId=ebs_ss['SnapshotId'])
+        vol_id = ebs_vol['VolumeId']
 
-        if self._wait_for_create(ebs_vol.id, 'available') is False:
+        if not self._wait_for_create(ec2_conn, vol_id, 'available'):
             raise APITimeout(service='EC2')
-        self._conn.create_tags([ebs_vol.id],
-                               {'project_id': volume['project_id'],
-                                'uuid': volume['id'],
-                                'is_clone': False,
-                                'created_at': volume['created_at'],
-                                'Name': volume['display_name']})
+        if not self._wait_for_tags_creation(ec2_conn, vol_id, volume):
+            raise APITimeout(service='EC2')
 
     def create_cloned_volume(self, volume, srcvol_ref):
         ebs_snap = None
         ebs_vol = None
+        ec2_conn = self._ec2_client(
+            volume.obj_context, project_id=volume.project_id)
         try:
-            src_vol = self._find(srcvol_ref['id'], self._conn.get_all_volumes)
-            ebs_snap = self._conn.create_snapshot(src_vol.id)
+            src_vol = self._find(srcvol_ref['id'], ec2_conn.describe_volumes)
+            ebs_snap = ec2_conn.create_snapshot(VolumeId=src_vol['VolumeId'])
 
-            if self._wait_for_snapshot(ebs_snap.id, 'completed') is False:
+            if not self._wait_for_create(ec2_conn, ebs_snap['SnapshotId'],
+                                         'completed', is_snapshot=True):
                 raise APITimeout(service='EC2')
 
-            ebs_vol = self._conn.create_volume(
-                size=volume.size, zone=self._zone, snapshot=ebs_snap.id)
-            if self._wait_for_create(ebs_vol.id, 'available') is False:
+            ebs_vol = ec2_conn.create_volume(
+                Size=volume.size, AvailabilityZone=self.az,
+                SnapshotId=ebs_snap['SnapshotId'])
+            vol_id = ebs_vol['VolumeId']
+
+            if not self._wait_for_create(ec2_conn, vol_id, 'available'):
                 raise APITimeout(service='EC2')
-            if self._wait_for_tags_creation(ebs_vol.id, volume) is False:
+            if not self._wait_for_tags_creation(ec2_conn, vol_id, volume,
+                                                True):
                 raise APITimeout(service='EC2')
         except NotFound:
             raise VolumeNotFound(srcvol_ref['id'])
@@ -277,36 +268,43 @@ class EBSDriver(BaseVD):
             message = "create_cloned_volume failed! volume: {0}, reason: {1}"
             LOG.error(message.format(volume.id, ex))
             if ebs_vol:
-                self._conn.delete_volume(ebs_vol.id)
+                ec2_conn.delete_volume(VolumeId=ebs_vol['VolumeId'])
             raise VolumeBackendAPIException(data=message.format(volume.id, ex))
         finally:
             if ebs_snap:
-                self._conn.delete_snapshot(ebs_snap.id)
+                ec2_conn.delete_snapshot(SnapshotId=ebs_snap['SnapshotId'])
 
     def clone_image(self, context, volume, image_location, image_meta,
                     image_service):
+        ec2_conn = self._ec2_client(context, project_id=volume.project_id)
         image_id = image_meta['properties']['aws_image_id']
-        snapshot_id = self._get_snapshot_id(image_id)
-        ebs_vol = self._conn.create_volume(size=volume.size, zone=self._zone,
-                                           snapshot=snapshot_id)
-        if self._wait_for_create(ebs_vol.id, 'available') is False:
+        snapshot_id = self._get_snapshot_id(ec2_conn, image_id)
+        ebs_vol = ec2_conn.create_volume(
+            Size=volume.size, AvailabilityZone=self.az,
+            SnapshotId=snapshot_id)
+        vol_id = ebs_vol['VolumeId']
+        if not self._wait_for_create(ec2_conn, vol_id, 'available'):
             raise APITimeout(service='EC2')
-        if self._wait_for_tags_creation(ebs_vol.id, volume) is False:
+        if not self._wait_for_tags_creation(ec2_conn, vol_id, volume, True):
             raise APITimeout(service='EC2')
         metadata = volume['metadata']
-        metadata['new_volume_id'] = ebs_vol.id
+        metadata['new_volume_id'] = vol_id
         return dict(metadata=metadata), True
 
-    def _get_snapshot_id(self, image_id):
+    def _get_snapshot_id(self, ec2_conn, image_id):
         try:
-            response = self._conn.get_all_images(image_ids=[image_id])[0]
-            snapshot_id = response.block_device_mapping[
-                '/dev/sda1'].snapshot_id
+            resp = ec2_conn.describe_images(ImageIds=[image_id])
+            ec2_image = resp['Images'][0]
+            snapshot_id = None
+            for bdm in ec2_image['BlockDeviceMappings']:
+                if bdm['DeviceName'] == '/dev/sda1':
+                    snapshot_id = bdm['Ebs']['SnapshotId']
+                    break
             return snapshot_id
-        except EC2ResponseError:
-            message = "Getting image {0} failed.".format(image_id)
-            LOG.error(message)
-            raise ImageNotFound(message)
+        except ClientError as e:
+            message = "Getting image {0} failed. Error: {1}"
+            LOG.error(message.format(image_id, e.message))
+            raise ImageNotFound(message.format(image_id, e.message))
 
     def copy_image_to_volume(self, context, volume, image_service, image_id):
         """Nothing need to do here since we create volume from image in
