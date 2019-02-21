@@ -1,8 +1,11 @@
-*.pyc
+*.py[cod]
 *~
 *venv
 .idea
 *.egg*
 .tox
-openstack
 *.log
+build/*
+creds_manager/build/*
+.testrepository
+openstack

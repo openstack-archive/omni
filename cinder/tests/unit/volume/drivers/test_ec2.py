@@ -17,52 +17,48 @@ from cinder.exception import ImageNotFound
 from cinder.exception import NotFound
 from cinder.exception import VolumeNotFound
 from cinder import test
+from cinder.tests.unit.fake_snapshot import fake_snapshot_obj
 from cinder.tests.unit.fake_volume import fake_volume_obj
 from cinder.volume.drivers.aws import ebs
-from cinder.volume.drivers.aws.exception import AvailabilityZoneNotFound
 import mock
-from moto import mock_ec2_deprecated
+from moto import mock_ec2
 from oslo_service import loopingcall
 
 
+def fake_get_credentials(*args, **kwargs):
+    return {
+        'aws_access_key_id': 'fake_access_key_id',
+        'aws_secret_access_key': 'fake_access_key'
+    }
+
+
 class EBSVolumeTestCase(test.TestCase):
-    @mock_ec2_deprecated
+    @mock_ec2
     def setUp(self):
         super(EBSVolumeTestCase, self).setUp()
+        self.mock_get_credentials = mock.patch(
+            'cinder.volume.drivers.aws.ebs.get_credentials'
+        ).start()
+        self.mock_get_credentials.side_effect = fake_get_credentials
         ebs.CONF.AWS.region_name = 'us-east-1'
-        ebs.CONF.AWS.access_key = 'fake-key'
-        ebs.CONF.AWS.secret_key = 'fake-secret'
         ebs.CONF.AWS.az = 'us-east-1a'
         self._driver = ebs.EBSDriver()
         self.ctxt = context.get_admin_context()
         self._driver.do_setup(self.ctxt)
 
     def _stub_volume(self, **kwargs):
-        uuid = u'c20aba21-6ef6-446b-b374-45733b4883ba'
-        name = u'volume-00000001'
-        size = 1
-        created_at = '2016-10-19 23:22:33'
-        volume = dict()
-        volume['id'] = kwargs.get('id', uuid)
-        volume['display_name'] = kwargs.get('display_name', name)
-        volume['size'] = kwargs.get('size', size)
-        volume['provider_location'] = kwargs.get('provider_location', None)
-        volume['volume_type_id'] = kwargs.get('volume_type_id', None)
-        volume['project_id'] = kwargs.get('project_id', 'aws_proj_700')
-        volume['created_at'] = kwargs.get('create_at', created_at)
-        return volume
+        kwargs.setdefault('display_name', 'fake_name')
+        kwargs.setdefault('project_id', 'fake_project_id')
+        kwargs.setdefault('created_at', '2016-10-19 23:22:33')
+        return fake_volume_obj(self.ctxt, **kwargs)
 
     def _stub_snapshot(self, **kwargs):
-        uuid = u'0196f961-c294-4a2a-923e-01ef5e30c2c9'
-        created_at = '2016-10-19 23:22:33'
-        ss = dict()
-
-        ss['id'] = kwargs.get('id', uuid)
-        ss['project_id'] = kwargs.get('project_id', 'aws_proj_700')
-        ss['created_at'] = kwargs.get('create_at', created_at)
-        ss['volume'] = kwargs.get('volume', self._stub_volume())
-        ss['display_name'] = kwargs.get('display_name', 'snapshot_007')
-        return ss
+        volume = self._stub_volume()
+        kwargs.setdefault('volume_id', volume.id)
+        kwargs.setdefault('display_name', 'fake_name')
+        kwargs.setdefault('project_id', 'fake_project_id')
+        kwargs.setdefault('created_at', '2016-10-19 23:22:33')
+        return fake_snapshot_obj(self.ctxt, **kwargs)
 
     def _fake_image_meta(self):
         image_meta = dict()
@@ -76,18 +72,11 @@ class EBSVolumeTestCase(test.TestCase):
         image_meta['properties']['aws_image_id'] = 'ami-00001'
         return image_meta
 
-    @mock_ec2_deprecated
-    def test_availability_zone_config(self):
-        ebs.CONF.AWS.az = 'hgkjhgkd'
-        driver = ebs.EBSDriver()
-        self.assertRaises(AvailabilityZoneNotFound, driver.do_setup, self.ctxt)
-        ebs.CONF.AWS.az = 'us-east-1a'
-
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_volume_create_success(self):
         self.assertIsNone(self._driver.create_volume(self._stub_volume()))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._wait_for_create')
     def test_volume_create_fails(self, mock_wait):
         def wait(*args):
@@ -101,49 +90,34 @@ class EBSVolumeTestCase(test.TestCase):
         self.assertRaises(APITimeout, self._driver.create_volume,
                           self._stub_volume())
 
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_volume_deletion(self):
         vol = self._stub_volume()
         self._driver.create_volume(vol)
         self.assertIsNone(self._driver.delete_volume(vol))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._find')
     def test_volume_deletion_not_found(self, mock_find):
         vol = self._stub_volume()
         mock_find.side_effect = NotFound
         self.assertIsNone(self._driver.delete_volume(vol))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_snapshot(self):
         vol = self._stub_volume()
         snapshot = self._stub_snapshot()
         self._driver.create_volume(vol)
         self.assertIsNone(self._driver.create_snapshot(snapshot))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._find')
     def test_snapshot_volume_not_found(self, mock_find):
         mock_find.side_effect = NotFound
         ss = self._stub_snapshot()
         self.assertRaises(VolumeNotFound, self._driver.create_snapshot, ss)
 
-    @mock_ec2_deprecated
-    @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._wait_for_snapshot')
-    def test_snapshot_create_fails(self, mock_wait):
-        def wait(*args):
-            def _wait():
-                raise loopingcall.LoopingCallDone(False)
-
-            timer = loopingcall.FixedIntervalLoopingCall(_wait)
-            return timer.start(interval=1).wait()
-
-        mock_wait.side_effect = wait
-        ss = self._stub_snapshot()
-        self._driver.create_volume(ss['volume'])
-        self.assertRaises(APITimeout, self._driver.create_snapshot, ss)
-
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_volume_from_snapshot(self):
         snapshot = self._stub_snapshot()
         volume = self._stub_volume()
@@ -152,7 +126,7 @@ class EBSVolumeTestCase(test.TestCase):
         self.assertIsNone(
             self._driver.create_volume_from_snapshot(volume, snapshot))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_volume_from_non_existing_snapshot(self):
         self.assertRaises(NotFound, self._driver.create_volume_from_snapshot,
                           self._stub_volume(), self._stub_snapshot())
@@ -163,27 +137,24 @@ class EBSVolumeTestCase(test.TestCase):
         self.assertRaises(ImageNotFound, self._driver.clone_image,
                           self.ctxt, volume, '', image_meta, '')
 
-    @mock_ec2_deprecated
+    @mock_ec2
     @mock.patch('cinder.volume.drivers.aws.ebs.EBSDriver._get_snapshot_id')
     def test_clone_image(self, mock_get):
-        snapshot = self._stub_snapshot()
         image_meta = self._fake_image_meta()
-        volume = fake_volume_obj(self.ctxt)
-        volume.id = 'd30aba21-6ef6-446b-b374-45733b4883ba'
-        volume.display_name = 'volume-00000001'
-        volume.project_id = 'fake_project_id'
-        volume.created_at = '2016-10-19 23:22:33'
-        self._driver.create_volume(snapshot['volume'])
+        volume = self._stub_volume()
+        snapshot = self._stub_snapshot()
+        self._driver.create_volume(volume)
         self._driver.create_snapshot(snapshot)
-        ebs_snap = self._driver._find(snapshot['id'],
-                                      self._driver._conn.get_all_snapshots)
-        mock_get.return_value = ebs_snap.id
+        ec2_conn = self._driver._ec2_client(snapshot.obj_context)
+        ebs_snap = self._driver._find(
+            snapshot['id'], ec2_conn.describe_snapshots, is_snapshot=True)
+        mock_get.return_value = ebs_snap['SnapshotId']
         metadata, cloned = self._driver.clone_image(self.ctxt, volume, '',
                                                     image_meta, '')
         self.assertEqual(True, cloned)
         self.assertTrue(isinstance(metadata, dict))
 
-    @mock_ec2_deprecated
+    @mock_ec2
     def test_create_cloned_volume(self):
         src_volume = fake_volume_obj(self.ctxt)
         src_volume.display_name = 'volume-00000001'

@@ -21,115 +21,37 @@ import json
 import time
 import uuid
 
-from boto import ec2
-from boto.ec2 import cloudwatch
-from boto import exception as boto_exc
-from boto.exception import EC2ResponseError
-from boto.regioninfo import RegionInfo
-from nova import block_device
+import boto3
+
+from botocore.exceptions import ClientError
+
 from nova.compute import power_state
 from nova.compute import task_states
 from nova.console import type as ctype
 from nova import exception
 from nova.i18n import _
 from nova.image import glance
+from nova import network
 from nova.virt import driver
-from nova.virt.ec2.exception_handler import Ec2ExceptionHandler
-from nova.virt.ec2.keypair import KeyPairNotifications
+from nova.virt.ec2.config import CONF
+from nova.virt.ec2.config import EC2_FLAVOR_MAP
+from nova.virt.ec2.config import EC2_STATE_MAP
+from nova.virt.ec2.credshelper import get_credentials
+from nova.virt.ec2.credshelper import get_credentials_all
+from nova.virt.ec2.notifications_handler import NovaNotificationsHandler
+from nova.virt.ec2 import vm_refs_cache
 from nova.virt import hardware
-from oslo_config import cfg
+
 from oslo_log import log as logging
 from oslo_service import loopingcall
 
 eventlet.monkey_patch()
+
 LOG = logging.getLogger(__name__)
 
-aws_group = cfg.OptGroup(name='AWS',
-                         title='Options to connect to an AWS cloud')
-
-aws_opts = [
-    cfg.StrOpt('secret_key', help='Secret key of AWS account', secret=True),
-    cfg.StrOpt('access_key', help='Access key of AWS account', secret=True),
-    cfg.StrOpt('region_name', help='AWS region'),
-    cfg.IntOpt('vnc_port',
-               default=5900,
-               help='VNC starting port'),
-    # 500 VCPUs
-    cfg.IntOpt('max_vcpus',
-               default=500,
-               help='Max number of vCPUs that can be used'),
-    # 1000 GB RAM
-    cfg.IntOpt('max_memory_mb',
-               default=1024000,
-               help='Max memory MB that can be used'),
-    # 1 TB Storage
-    cfg.IntOpt('max_disk_gb',
-               default=1024,
-               help='Max storage in GB that can be used'),
-    cfg.BoolOpt('enable_keypair_notifications', default=True,
-                help='Listen to keypair delete notifications and act on them')
-]
-
-CONF = cfg.CONF
-
-CONF.register_group(aws_group)
-CONF.register_opts(aws_opts, group=aws_group)
-
-EC2_STATE_MAP = {
-    "pending": power_state.NOSTATE,
-    "running": power_state.RUNNING,
-    "shutting-down": power_state.NOSTATE,
-    "terminated": power_state.CRASHED,
-    "stopping": power_state.NOSTATE,
-    "stopped": power_state.SHUTDOWN
-}
-
-EC2_FLAVOR_MAP = {
-    'c3.2xlarge': {'memory_mb': 15360.0, 'vcpus': 8},
-    'c3.4xlarge': {'memory_mb': 30720.0, 'vcpus': 16},
-    'c3.8xlarge': {'memory_mb': 61440.0, 'vcpus': 32},
-    'c3.large': {'memory_mb': 3840.0, 'vcpus': 2},
-    'c3.xlarge': {'memory_mb': 7680.0, 'vcpus': 4},
-    'c4.2xlarge': {'memory_mb': 15360.0, 'vcpus': 8},
-    'c4.4xlarge': {'memory_mb': 30720.0, 'vcpus': 16},
-    'c4.8xlarge': {'memory_mb': 61440.0, 'vcpus': 36},
-    'c4.large': {'memory_mb': 3840.0, 'vcpus': 2},
-    'c4.xlarge': {'memory_mb': 7680.0, 'vcpus': 4},
-    'd2.2xlarge': {'memory_mb': 62464.0, 'vcpus': 8},
-    'd2.4xlarge': {'memory_mb': 124928.0, 'vcpus': 16},
-    'd2.8xlarge': {'memory_mb': 249856.0, 'vcpus': 36},
-    'd2.xlarge': {'memory_mb': 31232.0, 'vcpus': 4},
-    'g2.2xlarge': {'memory_mb': 15360.0, 'vcpus': 8},
-    'g2.8xlarge': {'memory_mb': 61440.0, 'vcpus': 32},
-    'i2.2xlarge': {'memory_mb': 62464.0, 'vcpus': 8},
-    'i2.4xlarge': {'memory_mb': 124928.0, 'vcpus': 16},
-    'i2.8xlarge': {'memory_mb': 249856.0, 'vcpus': 32},
-    'i2.xlarge': {'memory_mb': 31232.0, 'vcpus': 4},
-    'm3.2xlarge': {'memory_mb': 30720.0, 'vcpus': 8},
-    'm3.large': {'memory_mb': 7680.0, 'vcpus': 2},
-    'm3.medium': {'memory_mb': 3840.0, 'vcpus': 1},
-    'm3.xlarge': {'memory_mb': 15360.0, 'vcpus': 4},
-    'm4.10xlarge': {'memory_mb': 163840.0, 'vcpus': 40},
-    'm4.2xlarge': {'memory_mb': 32768.0, 'vcpus': 8},
-    'm4.4xlarge': {'memory_mb': 65536.0, 'vcpus': 16},
-    'm4.large': {'memory_mb': 8192.0, 'vcpus': 2},
-    'm4.xlarge': {'memory_mb': 16384.0, 'vcpus': 4},
-    'r3.2xlarge': {'memory_mb': 62464.0, 'vcpus': 8},
-    'r3.4xlarge': {'memory_mb': 124928.0, 'vcpus': 16},
-    'r3.8xlarge': {'memory_mb': 249856.0, 'vcpus': 32},
-    'r3.large': {'memory_mb': 15616.0, 'vcpus': 2},
-    'r3.xlarge': {'memory_mb': 31232.0, 'vcpus': 4},
-    't2.large': {'memory_mb': 8192.0, 'vcpus': 2},
-    't2.medium': {'memory_mb': 4096.0, 'vcpus': 2},
-    't2.micro': {'memory_mb': 1024.0, 'vcpus': 1},
-    't2.nano': {'memory_mb': 512.0, 'vcpus': 1},
-    't2.small': {'memory_mb': 2048.0, 'vcpus': 1},
-    'x1.32xlarge': {'memory_mb': 1998848.0, 'vcpus': 128},
-    't1.micro': {'memory_mb': 613.0, 'vcpus': 1},
-}
 _EC2_NODES = None
 
-DIAGNOSTIC_KEYS_TO_FILTER = ['group', 'block_device_mapping']
+DIAGNOSTIC_KEYS_TO_FILTER = ['SecurityGroups', 'BlockDeviceMappings']
 
 
 def set_nodes(nodes):
@@ -153,6 +75,61 @@ def restore_nodes():
     """
     global _EC2_NODES
     _EC2_NODES = [CONF.host]
+
+
+def _get_ec2_client(creds, service):
+    ec2_conn = boto3.client(
+        service, region_name=CONF.AWS.region_name,
+        aws_access_key_id=creds['aws_access_key_id'],
+        aws_secret_access_key=creds['aws_secret_access_key'])
+    return ec2_conn
+
+
+def get_all_ec2_instances_volumes():
+    credentials = get_credentials_all()
+    zone_filter = [{'Name': 'availability-zone', 'Values': [CONF.AWS.az]}]
+    for creds in credentials:
+        project_id = creds.get('project_id')
+        ec2_conn = _get_ec2_client(creds, "ec2")
+        volume_ids = []
+        instance_list = []
+        try:
+            instance_list = ec2_conn.describe_instances(Filters=zone_filter)
+            for reservation in instance_list['Reservations']:
+                instance = reservation['Instances'][0]
+                volume_ids.extend([bdm['Ebs']['VolumeId']
+                                   for bdm in instance['BlockDeviceMappings']])
+                if instance['State']['Name'] in ['pending', 'shutting-down',
+                                                 'terminated']:
+                    continue
+                instance['Tags'].append({
+                    'Key': 'project_id',
+                    'Value': project_id})
+                yield 'instance', instance
+        except ClientError as e:
+            LOG.exception("Error while getting instances: %s", e.message)
+        if len(volume_ids):
+            try:
+                volumes = ec2_conn.describe_volumes(VolumeIds=volume_ids)
+                for volume in volumes['Volumes']:
+                    yield 'volume', volume
+            except ClientError as e:
+                LOG.exception("Error while getting volumes: %s", e.message)
+
+
+def convert_password(password):
+    """Stores password as system_metadata items.
+
+    Password is stored with the keys 'password_0' -> 'password_3'.
+    """
+    CHUNKS = 4
+    CHUNK_LENGTH = 255
+    password = password or ''
+    meta = {}
+    for i in range(CHUNKS):
+        meta['password_%d' % i] = password[:CHUNK_LENGTH]
+        password = password[CHUNK_LENGTH:]
+    return meta
 
 
 class EC2Driver(driver.ComputeDriver):
@@ -179,27 +156,30 @@ class EC2Driver(driver.ComputeDriver):
         global _EC2_NODES
         self._mounts = {}
         self._interfaces = {}
-        self._uuid_to_ec2_instance = {}
+        self._inst_vol_cache = {}
         self.ec2_flavor_info = EC2_FLAVOR_MAP
-        aws_region = CONF.AWS.region_name
-        aws_endpoint = "ec2." + aws_region + ".amazonaws.com"
-
-        region = RegionInfo(name=aws_region, endpoint=aws_endpoint)
-        self.ec2_conn = ec2.EC2Connection(
-            aws_access_key_id=CONF.AWS.access_key,
-            aws_secret_access_key=CONF.AWS.secret_key,
-            region=region)
-
-        self.cloudwatch_conn = cloudwatch.connect_to_region(
-            aws_region, aws_access_key_id=CONF.AWS.access_key,
-            aws_secret_access_key=CONF.AWS.secret_key)
+        self._local_instance_uuids = []
+        self._driver_tags = [
+            'openstack_id', 'openstack_project_id', 'openstack_user_id',
+            'Name', 'project_id']
 
         # Allow keypair deletion to be controlled by conf
         if CONF.AWS.enable_keypair_notifications:
-            eventlet.spawn(KeyPairNotifications(self.ec2_conn).run)
-        LOG.info("EC2 driver init with %s region" % aws_region)
+            eventlet.spawn(NovaNotificationsHandler().run)
+        LOG.info("EC2 driver init with %s region" % CONF.AWS.region_name)
         if _EC2_NODES is None:
             set_nodes([CONF.host])
+        # PF9 Start
+        self._pf9_stats = {}
+        # PF9 End
+
+    def _ec2_conn(self, context=None, project_id=None):
+        creds = get_credentials(context=context, project_id=project_id)
+        return _get_ec2_client(creds, "ec2")
+
+    def _cloudwatch_conn(self, context=None, project_id=None):
+        creds = get_credentials(context=context, project_id=project_id)
+        return _get_ec2_client(creds, "cloudwatch")
 
     def init_host(self, host):
         """Initialize anything that is necessary for the driver to function,
@@ -207,29 +187,34 @@ class EC2Driver(driver.ComputeDriver):
         """
         return
 
+    def _get_details_from_tags(self, instance, field):
+        if field == "openstack_id":
+            value = self._get_uuid_from_aws_id(instance['InstanceId'])
+        if field == "Name":
+            value = "_NO_NAME_IN_AWS_"
+        if field == "project_id":
+            value = None
+        for tag in instance['Tags']:
+            if tag['Key'] == field:
+                value = tag['Value']
+        return value
+
     def list_instances(self):
         """Return the names of all the instances known to the virtualization
         layer, as a list.
         """
-        all_instances = self.ec2_conn.get_only_instances()
-        self._uuid_to_ec2_instance.clear()
+        all_instances_volumes = get_all_ec2_instances_volumes()
         instance_ids = []
-        for instance in all_instances:
-            generate_uuid = False
-            if instance.state in ['pending', 'shutting-down', 'terminated']:
-                continue
-            if len(instance.tags) > 0:
-                if 'openstack_id' in instance.tags:
-                    self._uuid_to_ec2_instance[
-                        instance.tags['openstack_id']] = instance
-                else:
-                    generate_uuid = True
-            else:
-                generate_uuid = True
-            if generate_uuid:
-                instance_uuid = self._get_uuid_from_aws_id(instance.id)
-                self._uuid_to_ec2_instance[instance_uuid] = instance
-            instance_ids.append(instance.id)
+        self._local_instance_uuids = []
+        self._inst_vol_cache.clear()
+        for obj_type, obj in all_instances_volumes:
+            if obj_type == 'instance':
+                os_id = self._get_details_from_tags(obj, 'openstack_id')
+                vm_refs_cache.vm_ref_cache_update(os_id, obj)
+                self._local_instance_uuids.append(os_id)
+                instance_ids.append(obj['InstanceId'])
+            elif obj_type == 'volume':
+                self._inst_vol_cache[obj['VolumeId']] = obj
         return instance_ids
 
     def plug_vifs(self, instance, network_info):
@@ -240,7 +225,7 @@ class EC2Driver(driver.ComputeDriver):
         """Unplug VIFs from networks."""
         pass
 
-    def _add_ssh_keys(self, key_name, key_data):
+    def _add_ssh_keys(self, ec2_conn, key_name, key_data):
         """Adds SSH Keys into AWS EC2 account
 
         :param key_name:
@@ -249,12 +234,16 @@ class EC2Driver(driver.ComputeDriver):
         """
         # TODO(add_ssh_keys): Need to handle the cases if a key with the same
         # keyname exists and different key content
-        exist_key_pair = self.ec2_conn.get_key_pair(key_name)
-        if not exist_key_pair:
-            LOG.info("Adding SSH key to AWS")
-            self.ec2_conn.import_key_pair(key_name, key_data)
-        else:
-            LOG.info("SSH key already exists in AWS")
+        try:
+            response = ec2_conn.describe_key_pairs(KeyNames=[key_name])
+            if response['KeyPairs']:
+                LOG.info("SSH key already exists in AWS")
+                return
+        except ClientError as e:
+            LOG.warning('Error while calling describe_key_pairs: %s',
+                        e.message)
+        LOG.info("Adding SSH key to AWS")
+        ec2_conn.import_key_pair(KeyName=key_name, PublicKeyMaterial=key_data)
 
     def _get_image_ami_id_from_meta(self, context, image_lacking_meta):
         """Pulls the Image AMI ID from the location attribute of Image Meta
@@ -280,12 +269,12 @@ class EC2Driver(driver.ComputeDriver):
         :param network_info:
         :return:
         """
-
         LOG.info("Networks to be processed : %s" % network_info)
         subnet_id = None
         fixed_ip = None
         port_id = None
         network_id = None
+        security_group_ids = []
         if len(network_info) > 1:
             LOG.warn('AWS does not allow connecting 1 instance to multiple '
                      'VPCs.')
@@ -295,24 +284,27 @@ class EC2Driver(driver.ComputeDriver):
                 subnet_id = network_dict['subnet_id']
                 LOG.info("Adding subnet ID:" + subnet_id)
                 fixed_ip = network_dict['ip_address']
+                security_group_ids = network_dict.get('ec2_security_groups',
+                                                      [])
                 LOG.info("Fixed IP:" + fixed_ip)
                 port_id = vif['id']
                 network_id = vif['network']['id']
                 break
-        return subnet_id, fixed_ip, port_id, network_id
+        return subnet_id, fixed_ip, port_id, network_id, security_group_ids
 
-    def _get_instance_sec_grps(self, context, port_id, network_id):
+    def _get_instance_sec_grps(self, context, ec2_conn, port_id, network_id):
         secgrp_ids = []
-        from nova import network
         network_api = network.API()
         port_obj = network_api.show_port(context, port_id)
         if port_obj.get('port', {}).get('security_groups', []):
-            filters = {'tag-value': port_obj['port']['security_groups']}
-            secgrps = self.ec2_conn.get_all_security_groups(filters=filters)
-            for secgrp in secgrps:
-                if network_id and 'openstack_network_id' in secgrp.tags and \
-                        secgrp.tags['openstack_network_id'] == network_id:
-                    secgrp_ids.append(secgrp.id)
+            filters = [{'Name': 'tag-value',
+                        'Values': port_obj['port']['security_groups']}]
+            secgrps = ec2_conn.describe_security_groups(Filters=filters)
+            for secgrp in secgrps['SecurityGroups']:
+                for tag in secgrp['Tags']:
+                    if (tag['Key'] == 'openstack_network_id' and
+                            tag['Value'] == network_id):
+                        secgrp_ids.append(secgrp.id)
         return secgrp_ids
 
     def spawn(self, context, instance, image_meta, injected_files,
@@ -338,25 +330,25 @@ class EC2Driver(driver.ComputeDriver):
         :param block_device_info: Information about block devices to be
                                   attached to the instance.
         """
-
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
         image_ami_id = self._get_image_ami_id_from_meta(context, image_meta)
 
-        subnet_id, fixed_ip, port_id, network_id = self._process_network_info(
-            network_info)
+        subnet_id, fixed_ip, port_id, network_id, security_group_ids = \
+            self._process_network_info(network_info)
         if subnet_id is None or fixed_ip is None:
             raise exception.BuildAbortException("Network configuration "
                                                 "failure")
 
-        security_groups = self._get_instance_sec_grps(context, port_id,
-                                                      network_id)
+        if len(security_group_ids) == 0:
+            security_group_ids = self._get_instance_sec_grps(
+                context, ec2_conn, port_id, network_id)
         # Flavor
-        flavor_dict = instance['flavor']
-        flavor_type = flavor_dict['name']
+        flavor_type = instance['flavor']['name']
 
         # SSH Keys
-        if (instance['key_name'] is not None and
-                instance['key_data'] is not None):
-            self._add_ssh_keys(instance['key_name'], instance['key_data'])
+        if instance['key_name'] and instance['key_data']:
+            self._add_ssh_keys(ec2_conn, instance['key_name'],
+                               instance['key_data'])
 
         # Creating the EC2 instance
         user_data = None
@@ -366,42 +358,83 @@ class EC2Driver(driver.ComputeDriver):
             user_data = instance['user_data']
             user_data = base64.b64decode(user_data)
         try:
-            reservation = self.ec2_conn.run_instances(
-                instance_type=flavor_type, key_name=instance['key_name'],
-                image_id=image_ami_id, user_data=user_data,
-                subnet_id=subnet_id, private_ip_address=fixed_ip,
-                security_group_ids=security_groups)
-            ec2_instance = reservation.instances
-            ec2_instance_obj = ec2_instance[0]
-            ec2_id = ec2_instance[0].id
-            self._wait_for_state(instance, ec2_id, "running",
-                                 power_state.RUNNING)
-            instance['metadata'].update({'ec2_id': ec2_id})
-            ec2_instance_obj.add_tag("Name", instance['display_name'])
-            ec2_instance_obj.add_tag("openstack_id", instance['uuid'])
-            ec2_instance_obj.add_tag(
-                "openstack_project_id", context.project_id)
-            ec2_instance_obj.add_tag("openstack_user_id", context.user_id)
-            self._uuid_to_ec2_instance[instance.uuid] = ec2_instance_obj
+            kwargs = dict(InstanceType=flavor_type, ImageId=image_ami_id,
+                          SubnetId=subnet_id, PrivateIpAddress=fixed_ip,
+                          SecurityGroupIds=security_group_ids, MaxCount=1,
+                          MinCount=1)
+            if user_data:
+                kwargs.update({'UserData': user_data})
+            if 'key_name' in instance and instance['key_name']:
+                kwargs.update({'KeyName': instance['key_name']})
+            reservation = ec2_conn.run_instances(**kwargs)
+            ec2_instance_obj = reservation['Instances'][0]
+            ec2_id = ec2_instance_obj['InstanceId']
+            self._wait_for_state(ec2_conn, instance, ec2_id, "running",
+                                 power_state.RUNNING, check_exists=True)
+            ec2_tags = [
+                {'Key': 'Name', 'Value': instance.display_name},
+                {'Key': 'openstack_id', 'Value': instance.uuid},
+                {'Key': 'openstack_project_id', 'Value': context.project_id},
+                {'Key': 'openstack_user_id', 'Value': context.user_id}
+            ]
+            if instance.metadata:
+                for key, value in instance.metadata.items():
+                    if key.startswith('aws:'):
+                        LOG.warn('Invalid EC2 tag. %s will be ignored', key)
+                    else:
+                        ec2_tags.append({'Key': key, 'Value': value})
+            ec2_conn.create_tags(Resources=[ec2_id], Tags=ec2_tags)
+            instance.metadata.update({'ec2_id': ec2_id})
+            vm_refs_cache.vm_ref_cache_update(instance.uuid, ec2_instance_obj)
 
             # Fetch Public IP of the instance if it has one
-            instances = self.ec2_conn.get_only_instances(instance_ids=[ec2_id])
-            if len(instances) > 0:
-                public_ip = instances[0].ip_address
-                if public_ip is not None:
+            ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+            if len(ec2_instances['Reservations']) > 0:
+                ec2_instance = ec2_instances['Reservations'][0]['Instances'][0]
+                public_ip = None
+                if 'PublicIpAddress' in ec2_instance:
+                    public_ip = ec2_instance['PublicIpAddress']
+                if public_ip:
                     instance['metadata'].update({
                         'public_ip_address': public_ip})
-        except EC2ResponseError as ec2_exception:
-            actual_exception = Ec2ExceptionHandler.get_processed_exception(
-                ec2_exception)
-            LOG.info("Error in starting instance %s" % (actual_exception))
-            raise exception.BuildAbortException(actual_exception.message)
+        except ClientError as ec2_exception:
+            LOG.info("Error in starting instance %s" % (ec2_exception.message))
+            raise exception.BuildAbortException(ec2_exception.message)
+
+        eventlet.spawn_n(self._update_password, ec2_conn, ec2_id, instance)
+
+    def _update_password(self, ec2_conn, ec2_id, openstack_instance):
+        try:
+            instance_pass = None
+            retries = 0
+            while not instance_pass:
+                time.sleep(15)
+                response = ec2_conn.get_password_data(InstanceId=ec2_id)
+                instance_pass = response['PasswordData'].strip()
+                retries += 1
+                if retries == 10:
+                    break
+            if instance_pass:
+                openstack_instance['system_metadata'].update(
+                    convert_password(instance_pass))
+                openstack_instance.save()
+                LOG.info("Updated password for instance with ec2_id %s" %
+                         (ec2_id))
+            else:
+                LOG.warn("Failed to get password for ec2 instance %s "
+                         "after multiple tries" % (ec2_id))
+        except (ClientError, NotImplementedError):
+            # For Linux instances we get unauthorized exception
+            # in get_password_data
+            LOG.info("Get password operation is not supported "
+                     "for ec2 instance %s" % (ec2_id))
 
     def _get_ec2_id_from_instance(self, instance):
-        if 'ec2_id' in instance.metadata and instance.metadata['ec2_id']:
+        ec2_instance = vm_refs_cache.vm_ref_cache_get(instance.uuid)
+        if ec2_instance:
+            return ec2_instance['InstanceId']
+        elif 'ec2_id' in instance.metadata and instance.metadata['ec2_id']:
             return instance.metadata['ec2_id']
-        elif instance.uuid in self._uuid_to_ec2_instance:
-            return self._uuid_to_ec2_instance[instance.uuid].id
         # if none of the conditions are met we cannot map OpenStack UUID to
         # AWS ID.
         raise exception.InstanceNotFound('Instance {0} not found'.format(
@@ -416,6 +449,8 @@ class EC2Driver(driver.ComputeDriver):
         :param image_id: Reference to a pre-created image that will hold the
         snapshot.
         """
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
+
         if instance.metadata.get('ec2_id', None) is None:
             raise exception.InstanceNotFound(instance_id=instance['uuid'])
         # Adding the below line only alters the state of the instance and not
@@ -424,18 +459,17 @@ class EC2Driver(driver.ComputeDriver):
             task_state=task_states.IMAGE_UPLOADING,
             expected_state=task_states.IMAGE_SNAPSHOT)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        ec_instance_info = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False,
-            max_results=None)
-        ec2_instance = ec_instance_info[0]
-        if ec2_instance.state == 'running':
-            ec2_image_id = ec2_instance.create_image(
-                name=str(image_id), description="Image created by OpenStack",
-                no_reboot=False, dry_run=False)
+        ec2_instance_info = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        ec2_instance = ec2_instance_info['Reservations'][0]['Instances'][0]
+        if ec2_instance['State']['Name'] == 'running':
+            response = ec2_conn.create_image(
+                Name=str(image_id), Description="Image created by OpenStack",
+                NoReboot=False, DryRun=False, InstanceId=ec2_id)
+            ec2_image_id = response['ImageId']
             LOG.info("Image created: %s." % ec2_image_id)
         # The instance will be in pending state when it comes up, waiting
         # for it to be in available
-        self._wait_for_image_state(ec2_image_id, "available")
+        self._wait_for_image_state(ec2_conn, ec2_image_id, "available")
 
         image_api = glance.get_default_image_service()
         image_ref = glance.generate_image_url(image_id)
@@ -479,14 +513,22 @@ class EC2Driver(driver.ComputeDriver):
 
     def _soft_reboot(self, context, instance, network_info,
                      block_device_info=None):
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        self.ec2_conn.reboot_instances(instance_ids=[ec2_id], dry_run=False)
+        ec2_conn.reboot_instances(InstanceIds=[ec2_id], DryRun=False)
         LOG.info("Soft Reboot Complete.")
 
     def _hard_reboot(self, context, instance, network_info,
                      block_device_info=None):
-        self.power_off(instance)
-        self.power_on(context, instance, network_info, block_device)
+        ec2_id = self._get_ec2_id_from_instance(instance)
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
+        ec2_conn.stop_instances(InstanceIds=[ec2_id], Force=False,
+                                DryRun=False)
+        self._wait_for_state(ec2_conn, instance, ec2_id, "stopped",
+                             power_state.SHUTDOWN)
+        ec2_conn.start_instances(InstanceIds=[ec2_id], DryRun=False)
+        self._wait_for_state(ec2_conn, instance, ec2_id, "running",
+                             power_state.RUNNING)
         LOG.info("Hard Reboot Complete.")
 
     @staticmethod
@@ -542,15 +584,19 @@ class EC2Driver(driver.ComputeDriver):
         """
         # TODO(timeout): Need to use timeout and retry_interval
         ec2_id = self._get_ec2_id_from_instance(instance)
-        self.ec2_conn.stop_instances(
-            instance_ids=[ec2_id], force=False, dry_run=False)
-        self._wait_for_state(instance, ec2_id, "stopped", power_state.SHUTDOWN)
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
+        ec2_conn.stop_instances(InstanceIds=[ec2_id], Force=False,
+                                DryRun=False)
+        self._wait_for_state(ec2_conn, instance, ec2_id, "stopped",
+                             power_state.SHUTDOWN)
 
     def power_on(self, context, instance, network_info, block_device_info):
         """Power on the specified instance."""
         ec2_id = self._get_ec2_id_from_instance(instance)
-        self.ec2_conn.start_instances(instance_ids=[ec2_id], dry_run=False)
-        self._wait_for_state(instance, ec2_id, "running", power_state.RUNNING)
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
+        ec2_conn.start_instances(InstanceIds=[ec2_id], DryRun=False)
+        self._wait_for_state(ec2_conn, instance, ec2_id, "running",
+                             power_state.RUNNING)
 
     def soft_delete(self, instance):
         """Deleting the specified instance"""
@@ -613,38 +659,66 @@ class EC2Driver(driver.ComputeDriver):
         :param destroy_disks: Indicates if disks should be destroyed
         :param migrate_data: implementation specific params
         """
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
         ec2_id = None
         try:
             ec2_id = self._get_ec2_id_from_instance(instance)
-            ec2_instances = self.ec2_conn.get_only_instances(
-                instance_ids=[ec2_id])
-        except exception.InstanceNotFound as ex:
+            ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        except ClientError as ex:
             # Exception while fetching instance info from AWS
             LOG.exception('Exception in destroy while fetching EC2 id for '
-                          'instance %s' % instance.uuid)
+                          'instance %s. Error: %s' % instance.uuid, ex.message)
             return
-        if len(ec2_instances) == 0:
+        if not len(ec2_instances['Reservations']):
             # Instance already deleted on hypervisor
             LOG.warning("EC2 instance with ID %s not found" % ec2_id,
                         instance=instance)
             return
         else:
             try:
-                if ec2_instances[0].state != 'terminated':
-                    if ec2_instances[0].state == 'running':
-                        self.ec2_conn.stop_instances(instance_ids=[ec2_id],
-                                                     force=True)
-                    self.ec2_conn.terminate_instances(instance_ids=[ec2_id])
-                    self._wait_for_state(instance, ec2_id, "terminated",
-                                         power_state.SHUTDOWN)
+                instance = ec2_instances['Reservations'][0]['Instances'][0]
+                if instance['State']['Name'] != 'terminated':
+                    if instance['State']['Name'] == 'running':
+                        ec2_conn.stop_instances(InstanceIds=[ec2_id],
+                                                Force=True)
+                    ec2_conn.terminate_instances(InstanceIds=[ec2_id])
+                    self._wait_for_state(ec2_conn, instance, ec2_id,
+                                         "terminated", power_state.SHUTDOWN)
             except Exception as ex:
                 LOG.exception("Exception while destroying instance: %s" %
                               str(ex))
                 raise ex
 
+    def find_disk_dev(self, pre_assigned_device_names):
+        # As per the documentation,
+        # http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/device_naming.html
+        # this function will select the first unused device name starting
+        # from sdf upto sdp.
+        dev_prefix = "/dev/sd"
+        max_dev = 11
+        for idx in range(max_dev):
+            disk_dev = dev_prefix + chr(ord('f') + idx)
+            if disk_dev not in pre_assigned_device_names:
+                return disk_dev
+        raise exception.NovaException("No free disk device names for prefix "
+                                      "'%s'" % dev_prefix)
+
+    def get_device_name_for_instance(self, instance, bdms, block_device_obj):
+        ec2_id = self._get_ec2_id_from_instance(instance)
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
+        response = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        ec2_instance = response['Reservations'][0]['Instances'][0]
+        pre_assigned_device_names = []
+        for bdm in ec2_instance['BlockDeviceMappings']:
+            pre_assigned_device_names.append(bdm['DeviceName'])
+        LOG.info("pre_assigned_device_names: %s", pre_assigned_device_names)
+        block_device_name = self.find_disk_dev(pre_assigned_device_names)
+        return block_device_name
+
     def attach_volume(self, context, connection_info, instance, mountpoint,
                       disk_bus=None, device_type=None, encryption=None):
         """Attach the disk to the instance at mountpoint using info."""
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
         instance_name = instance['name']
         if instance_name not in self._mounts:
             self._mounts[instance_name] = {}
@@ -654,8 +728,8 @@ class EC2Driver(driver.ComputeDriver):
         ec2_id = self._get_ec2_id_from_instance(instance)
 
         # ec2 only attaches volumes at /dev/sdf through /dev/sdp
-        self.ec2_conn.attach_volume(volume_id, ec2_id, mountpoint,
-                                    dry_run=False)
+        ec2_conn.attach_volume(VolumeId=volume_id, InstanceId=ec2_id,
+                               Device=mountpoint, DryRun=False)
 
     def detach_volume(self, connection_info, instance, mountpoint,
                       encryption=None):
@@ -664,16 +738,17 @@ class EC2Driver(driver.ComputeDriver):
             del self._mounts[instance['name']][mountpoint]
         except KeyError:
             pass
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
         volume_id = connection_info['data']['volume_id']
         ec2_id = self._get_ec2_id_from_instance(instance)
-        self.ec2_conn.detach_volume(volume_id, instance_id=ec2_id,
-                                    device=mountpoint, force=False,
-                                    dry_run=False)
+        ec2_conn.detach_volume(VolumeId=volume_id, InstanceId=ec2_id,
+                               Device=mountpoint, Force=False, DryRun=False)
 
     def swap_volume(self, old_connection_info, new_connection_info,
                     instance, mountpoint, resize_to):
         """Replace the disk attached to the instance."""
         # TODO(resize_to): Use resize_to parameter
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
         instance_name = instance['name']
         if instance_name not in self._mounts:
             self._mounts[instance_name] = {}
@@ -688,9 +763,8 @@ class EC2Driver(driver.ComputeDriver):
         # volume
         time.sleep(60)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        self.ec2_conn.attach_volume(new_volume_id,
-                                    ec2_id, mountpoint,
-                                    dry_run=False)
+        ec2_conn.attach_volume(VolumeId=new_volume_id, InstanceId=ec2_id,
+                               Device=mountpoint, DryRun=False)
         return True
 
     def attach_interface(self, instance, image_meta, vif):
@@ -707,22 +781,22 @@ class EC2Driver(driver.ComputeDriver):
             raise exception.InterfaceDetachFailed('not attached')
 
     def get_info(self, instance):
-        if instance.uuid in self._uuid_to_ec2_instance:
-            ec2_instance = self._uuid_to_ec2_instance[instance.uuid]
-        elif 'metadata' in instance and 'ec2_id' in instance['metadata']:
+        ec2_instance = vm_refs_cache.vm_ref_cache_get(instance.uuid)
+        if ec2_instance is None and \
+                'metadata' in instance and 'ec2_id' in instance['metadata']:
             ec2_id = instance['metadata']['ec2_id']
-            ec2_instances = self.ec2_conn.get_only_instances(
-                instance_ids=[ec2_id], filters=None, dry_run=False,
-                max_results=None)
-            if len(ec2_instances) == 0:
+            ec2_conn = self._ec2_conn(project_id=instance.project_id)
+            ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+            if not len(ec2_instances['Reservations']):
                 LOG.warning(_("EC2 instance with ID %s not found") % ec2_id,
                             instance=instance)
                 raise exception.InstanceNotFound(instance_id=instance['name'])
-            ec2_instance = ec2_instances[0]
-        else:
+            ec2_instance = ec2_instances['Reservations'][0]['Instances'][0]
+        if ec2_instance is None:
+            # Instance was not found in cache and did not have ec2 tags
             raise exception.InstanceNotFound(instance_id=instance['name'])
 
-        power_state = EC2_STATE_MAP.get(ec2_instance.state)
+        power_state = EC2_STATE_MAP.get(ec2_instance['State']['Name'])
         return hardware.InstanceInfo(state=power_state)
 
     def allow_key(self, key):
@@ -733,24 +807,23 @@ class EC2Driver(driver.ComputeDriver):
 
     def get_diagnostics(self, instance):
         """Return data about VM diagnostics."""
-
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        ec2_instances = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False,
-            max_results=None)
-        if len(ec2_instances) == 0:
+        ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        if not len(ec2_instances['Reservations']):
             LOG.warning(_("EC2 instance with ID %s not found") % ec2_id,
                         instance=instance)
             raise exception.InstanceNotFound(instance_id=instance['name'])
-        ec2_instance = ec2_instances[0]
+        ec2_instance = ec2_instances['Reservations'][0]['Instances'][0]
 
         diagnostics = {}
-        for key, value in ec2_instance.__dict__.items():
+        for key, value in ec2_instance.items():
             if self.allow_key(key):
                 diagnostics['instance.' + key] = str(value)
 
-        metrics = self.cloudwatch_conn.list_metrics(
-            dimensions={'InstanceId': ec2_id})
+        cloudwatch_conn = self._cloudwatch_conn(project_id=instance.project_id)
+        metrics = cloudwatch_conn.list_metrics(
+            Dimensions=[{'InstanceId': ec2_id}])
 
         for metric in metrics:
             end = datetime.datetime.utcnow()
@@ -780,23 +853,36 @@ class EC2Driver(driver.ComputeDriver):
     def interface_stats(self, instance_name, iface_id):
         return [0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L]
 
+    def get_console_output(self, context, instance):
+        ec2_conn = self._ec2_conn(context=context,
+                                  project_id=instance.project_id)
+        ec2_id = self._get_ec2_id_from_instance(instance)
+        LOG.info("Getting console output from ec2 instance: %s", ec2_id)
+        response = ec2_conn.get_console_output(InstanceId=ec2_id)
+        if response['Output'] is not None:
+            return response['Output']
+        LOG.warning("No console logs received from AWS for instance %s",
+                    ec2_id)
+        return "No console logs received from AWS for instance %s" % ec2_id
+
     def get_vnc_console(self, context, instance):
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
         ec2_id = self._get_ec2_id_from_instance(instance)
         LOG.info("VNC console connect to %s" % ec2_id)
-        reservations = self.ec2_conn.get_all_instances()
+        reservations = ec2_conn.describe_instances()
 
         vnc_port = 5901
         # Get the IP of the instance
         host_ip = None
-        for reservation in reservations:
-            if reservation.instances is not None:
-                for instance in reservation.instances:
-                    if instance.id == ec2_id:
-                        if instance.ip_address is not None:
-                            host_ip = instance.ip_address
-        if host_ip is not None:
-            LOG.info("Found the IP of the instance IP:%s and port:%s" % (
-                host_ip, vnc_port))
+        for reservation in reservations['Reservations']:
+            for instance in reservation['Instances']:
+                if instance['InstanceId'] == ec2_id:
+                    if ('PublicIpAddress' in instance and
+                            instance['PublicIpAddress']):
+                        host_ip = instance['PublicIpAddress']
+        if host_ip:
+            LOG.info("Found the IP of the instance IP: %s and port: %s",
+                     host_ip, vnc_port)
             return ctype.ConsoleVNC(host=host_ip, port=vnc_port)
         else:
             LOG.info("Ip not Found for the instance")
@@ -891,33 +977,34 @@ class EC2Driver(driver.ComputeDriver):
         :param instance: nova.objects.instance.Instance being migrated/resized
         :param power_on: is True  the instance should be powered on
         """
+        ec2_conn = self._ec2_conn(context=context,
+                                  project_id=instance.project_id)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        ec_instance_info = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False,
-            max_results=None)
-        ec2_instance = ec_instance_info[0]
+        ec_instance_info = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        ec2_instance = ec_instance_info['Reservations'][0]['Instances'][0]
 
         # EC2 instance needs to be stopped to modify it's attribute. So we stop
         # the instance, modify the instance type in this case, and then restart
         # the instance.
-        ec2_instance.stop()
-        self._wait_for_state(instance, ec2_id, "stopped", power_state.SHUTDOWN)
+        ec2_conn.stop_instances(InstanceIds=[ec2_id])
+        self._wait_for_state(ec2_conn, instance, ec2_id, "stopped",
+                             power_state.SHUTDOWN)
         # TODO(flavor_map is undefined): need to check flavor type variable
         new_instance_type = flavor_map[migration['new_instance_type_id']]  # noqa
-        ec2_instance.modify_attribute('instanceType', new_instance_type)
+        ec2_instance.modify_attribute(
+            Attribute='instanceType',
+            InstanceType={'Value': new_instance_type})
 
     def confirm_migration(self, migration, instance, network_info):
         """Confirms a resize, destroying the source VM.
 
         :param instance: nova.objects.instance.Instance
         """
+        ec2_conn = self._ec2_conn(project_id=instance.project_id)
         ec2_id = self._get_ec2_id_from_instance(instance)
-        ec_instance_info = self.ec2_conn.get_only_instances(
-            instance_ids=[ec2_id], filters=None, dry_run=False,
-            max_results=None)
-        ec2_instance = ec_instance_info[0]
-        ec2_instance.start()
-        self._wait_for_state(instance, ec2_id, "running", power_state.RUNNING)
+        ec2_conn.start_instances(InstanceIds=[ec2_id])
+        self._wait_for_state(ec2_conn, instance, ec2_id, "running",
+                             power_state.RUNNING)
 
     def pre_live_migration(self, context, instance_ref, block_device_info,
                            network_info, disk, migrate_data=None):
@@ -990,31 +1077,12 @@ class EC2Driver(driver.ComputeDriver):
         return str(uuid.UUID(bytes=m.digest(), version=4))
 
     def list_instance_uuids(self, node=None, template_uuids=None, force=False):
-        ec2_instances = self.ec2_conn.get_only_instances()
-        # Clear the cache of UUID->EC2 ID mapping
-        self._uuid_to_ec2_instance.clear()
-        for instance in ec2_instances:
-            generate_uuid = False
-            if instance.state in ['pending', 'shutting-down', 'terminated']:
-                # Instance is being created or destroyed no need to list it
-                continue
-            if len(instance.tags) > 0:
-                if 'openstack_id' in instance.tags:
-                    self._uuid_to_ec2_instance[
-                        instance.tags['openstack_id']] = instance
-                else:
-                    # Possibly a new discovered instance
-                    generate_uuid = True
-            else:
-                generate_uuid = True
+        # Refresh the local list of instances
+        self.list_instances()
+        return self._local_instance_uuids
 
-            if generate_uuid:
-                instance_uuid = self._get_uuid_from_aws_id(instance.id)
-                self._uuid_to_ec2_instance[instance_uuid] = instance
-        return self._uuid_to_ec2_instance.keys()
-
-    def _wait_for_state(self, instance, ec2_id, desired_state,
-                        desired_power_state):
+    def _wait_for_state(self, ec2_conn, instance, ec2_id, desired_state,
+                        desired_power_state, check_exists=False):
         """Wait for the state of the corrosponding ec2 instance to be in
         completely available state.
 
@@ -1024,31 +1092,24 @@ class EC2Driver(driver.ComputeDriver):
         def _wait_for_power_state():
             """Called at an interval until the VM is running again.
             """
-            ec2_instance = self.ec2_conn.get_only_instances(
-                instance_ids=[ec2_id])
-
-            state = ec2_instance[0].state
+            try:
+                response = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+                ec2_instance = response['Reservations'][0]['Instances'][0]
+                state = ec2_instance['State']['Name']
+            except ClientError as e:
+                if check_exists:
+                    LOG.error("Error getting instance %s. Retrying", e.message)
+                    return
+                raise
             if state == desired_state:
                 LOG.info("Instance has changed state to %s." % desired_state)
-                raise loopingcall.LoopingCallDone()
-
-        def _wait_for_status_check():
-            """Power state of a machine might be ON, but status check is the
-            one which gives the real
-            """
-            ec2_instance = self.ec2_conn.get_all_instance_status(
-                instance_ids=[ec2_id])[0]
-            if ec2_instance.system_status.status == 'ok':
-                LOG.info("Instance status check is %s / %s" %
-                         (ec2_instance.system_status.status,
-                          ec2_instance.instance_status.status))
                 raise loopingcall.LoopingCallDone()
 
         # waiting for the power state to change
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_power_state)
         timer.start(interval=1).wait()
 
-    def _wait_for_image_state(self, ami_id, desired_state):
+    def _wait_for_image_state(self, ec2_conn, ami_id, desired_state):
         """Timer to wait for the image/snapshot to reach a desired state
 
         :params:ami_id: correspoding image id in Amazon
@@ -1057,15 +1118,166 @@ class EC2Driver(driver.ComputeDriver):
         def _wait_for_state():
             """Called at an interval until the AMI image is available."""
             try:
-                images = self.ec2_conn.get_all_images(
-                    image_ids=[ami_id], owners=None,
-                    executable_by=None, filters=None, dry_run=None)
-                state = images[0].state
+                images = ec2_conn.describe_images(ImageIds=[ami_id])
+                state = images['Images'][0]['State']
                 if state == desired_state:
                     LOG.info("Image has changed state to %s." % desired_state)
                     raise loopingcall.LoopingCallDone()
-            except boto_exc.EC2ResponseError:
+            except ClientError:
                 pass
 
         timer = loopingcall.FixedIntervalLoopingCall(_wait_for_state)
         timer.start(interval=0.5).wait()
+
+    def change_instance_metadata(self, context, instance, diff):
+        """
+        :param diff: dictionary of the format -
+        {
+            "key1": ["+", "value1"] # add key1=value1
+            "key2": ["-"] # remove tag with key2
+        }
+        """
+        ec2_conn = self._ec2_conn(context, project_id=instance.project_id)
+        ec2_instance = vm_refs_cache.vm_ref_cache_get(instance.uuid)
+        if not ec2_instance:
+            ec2_id = self._get_ec2_id_from_instance(instance)
+            ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+            if ec2_instances['Reservations']:
+                ec2_instance = ec2_instances['Reservations'][0]['Instances'][0]
+            else:
+                LOG.debug('Fetched incorrect EC2 ID - %s', ec2_id)
+                LOG.warn('Could not get EC2 instances for %s', instance.uuid)
+                return
+        ec2_id = ec2_instance['InstanceId']
+        current_tags = ec2_instance.get('Tags', [])
+        # Process the diff
+        tags_to_add = []
+        tags_to_remove = []
+        for key, change in diff.items():
+            op = change[0]
+            if op == '+':
+                if not current_tags:
+                    tags_to_add.append({'Key': key, 'Value': change[1]})
+                for tag in current_tags:
+                    if tag['Key'] == key and tag['Value'] == change[1] or \
+                            key.startswith('aws:'):
+                        # Tag already present on EC2 instance
+                        # OR
+                        # Tag starts with "aws:" which is not allowed in AWS
+                        LOG.warn('%s tag will not be added on %s instance',
+                                 key, instance.uuid)
+                        continue
+                    else:
+                        tags_to_add.append({'Key': key, 'Value': change[1]})
+            if op == '-':
+                for tag in current_tags:
+                    if key in self._driver_tags:
+                        # One of REQUIRED tags is being removed
+                        LOG.warn('Trying to delete required tag on EC2. '
+                                 'Tag - %s on instance %s', key, instance.uuid)
+                        continue
+                    if tag['Key'] == key:
+                        tags_to_remove.append({'Key': key,
+                                               'Value': tag['Value']})
+        # Propagate the tags to EC2 instance
+        if tags_to_add:
+            LOG.debug('Adding %s tags to %s instance', tags_to_add,
+                      instance.uuid)
+            ec2_conn.create_tags(Resources=[ec2_id], Tags=tags_to_add)
+        if tags_to_remove:
+            LOG.debug('Removing %s tags from %s instance', tags_to_remove,
+                      instance.uuid)
+            ec2_conn.delete_tags(Resources=[ec2_id], Tags=tags_to_remove)
+        # Update vm_refs_cache with latest tags
+        ec2_instances = ec2_conn.describe_instances(InstanceIds=[ec2_id])
+        if ec2_instances['Reservations']:
+            ec2_instance = ec2_instances['Reservations'][0]['Instances'][0]
+            vm_refs_cache.vm_ref_cache_update(instance.uuid, ec2_instance)
+            LOG.debug("Updated vm_refs_cache with latest tags")
+        LOG.info('Metadata change for instance %s processed', instance.uuid)
+
+    # PF9 : Start
+    def get_instance_info(self, instance_uuid):
+        retval = {}
+        try:
+            ec2_instance = vm_refs_cache.vm_ref_cache_get(instance_uuid)
+            retval['name'] = self._get_details_from_tags(ec2_instance, 'Name')
+            if ec2_instance['State']['Name'] == 'terminated':
+                return {}
+            retval['power_state'] = EC2_STATE_MAP.get(
+                ec2_instance['State']['Name'], power_state.NOSTATE)
+            retval['instance_uuid'] = instance_uuid
+            instance_type = ec2_instance['InstanceType']
+            if instance_type not in self.ec2_flavor_info:
+                instance_type = 'pf9.unknown'
+            ec2_instance_type = self.ec2_flavor_info.get(instance_type)
+            retval['vcpus'] = ec2_instance_type['vcpus']
+            retval['memory_mb'] = ec2_instance_type['memory_mb']
+            project_id = self._get_details_from_tags(ec2_instance,
+                                                     'project_id')
+            if project_id:
+                retval['pf9_project_id'] = project_id
+            bdm = []
+            boot_index = 0
+            volume_ids = [
+                _bdm['Ebs']['VolumeId']
+                for _bdm in ec2_instance['BlockDeviceMappings']
+            ]
+            for vol_id in volume_ids:
+                if vol_id not in self._inst_vol_cache:
+                    continue
+                volume = self._inst_vol_cache[vol_id]
+                disk_info = {}
+                disk_info['device_name'] = ''
+                disk_info['boot_index'] = boot_index
+                disk_info['guest_format'] = 'volume'
+                disk_info['source_type'] = 'blank'
+                disk_info['virtual_size'] = volume['Size']
+                disk_info['destination_type'] = 'local'
+                disk_info['snapshot_id'] = None
+                disk_info['volume_id'] = None
+                disk_info['image_id'] = None
+                disk_info['volume_size'] = None
+                bdm.append(disk_info)
+                boot_index += 1
+            retval['block_device_mapping_v2'] = bdm
+            return retval
+        except Exception:
+            LOG.exception('Could not fetch info for %s' % instance_uuid)
+            return {}
+
+    def _update_stats_pf9(self, resource_type):
+        """Retrieve physical resource utilization
+        """
+        if resource_type not in self._pf9_stats:
+            self._pf9_stats[resource_type] = {}
+        data = 0
+        self._pf9_stats[resource_type] = data
+        return {resource_type: data}
+
+    def _get_host_stats_pf9(self, res_types, refresh=False):
+        """Return the current physical resource consumption
+        """
+        if refresh or not self._pf9_stats:
+            self._update_stats_pf9(res_types)
+        return self._pf9_stats
+
+    def get_host_stats_pf9(self, res_types, refresh=False, nodename=None):
+        """Return currently known physical resource consumption
+        If 'refresh' is True, run update the stats first.
+        :param res_types: An array of resources to be queried
+        """
+        resource_stats = dict()
+        for resource_type in res_types:
+            LOG.info("Looking for resource: %s" % resource_type)
+            resource_dict = self._get_host_stats_pf9(resource_type,
+                                                     refresh=refresh)
+            resource_stats.update(resource_dict)
+        return resource_stats
+
+    def get_all_networks_pf9(self, node):
+        pass
+
+    def get_all_ip_mapping_pf9(self, needed_uuids=None):
+        return {}
+    # PF9 : End
