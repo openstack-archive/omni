@@ -320,9 +320,11 @@ class TestGceRouterPlugin(test_sg.SecurityGroupsTestCase, base.BaseTestCase):
         self.assertIsNone(self._driver.create_router(self.context, router))
         mock_create_router.assert_called_once_with(self.context, router)
 
-    @mock.patch('neutron.db.l3_db.L3_NAT_db_mixin.delete_router')
+    # PF9: Start
+    # We need to mock different class on newton codebase
+    @mock.patch('neutron.db.l3_hamode_db.L3_HA_NAT_db_mixin.delete_router')
+    # PF9: End
     def test_delete_router(self, mock_delete_router):
-
         mock_delete_router.return_value = None
         self.assertIsNone(self._driver.delete_router(
             self.context, self.context.current.get('id')))

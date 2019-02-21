@@ -1,4 +1,4 @@
-moto>=1.0.1
+#moto>=1.0.1
 azure-devtools>=0.4.1
--e git+https://github.com/Azure/azure-sdk-for-python.git#egg=azure-sdk-testutils&subdirectory=azure-sdk-testutils
-google-api-python-client==1.6.4
+-e git+https://github.com/Azure/azure-sdk-for-python.git#egg=azure-sdk-tools&subdirectory=azure-sdk-tools
+#google-api-python-client==1.6.4

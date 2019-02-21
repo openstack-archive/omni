@@ -15,24 +15,20 @@ import uuid
 from devtools_testutils.mgmt_testcase import fake_settings
 from neutron.common.azure import utils
 from neutron.extensions import securitygroup as sg
-from neutron.manager import NeutronManager
 from neutron.plugins.ml2 import driver_api as api
 from neutron.plugins.ml2.drivers.azure.mech_azure import azure_conf
 from neutron.plugins.ml2.drivers.azure.mech_azure import AzureMechanismDriver
 from neutron.tests import base
 from neutron.tests.common.azure import azure_mock
-from neutron_lib import exceptions
 from neutron_lib import constants as const
+from neutron_lib import exceptions
 
 import mock
 
 RESOURCE_GROUP = 'omni_test_group'
 CLIENT_SECRET = 'fake_key'
 
-if hasattr(NeutronManager, "get_plugin"):
-    neutron_get_plugin = 'neutron.manager.NeutronManager.get_plugin'
-else:
-    neutron_get_plugin = 'neutron_lib.plugins.directory.get_plugin'
+neutron_get_plugin = 'neutron_lib.plugins.directory.get_plugin'
 
 
 class AzureNeutronTestCase(base.BaseTestCase):

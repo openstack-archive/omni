@@ -23,6 +23,7 @@ azure_opts = [
     cfg.StrOpt('subscription_id', help='Azure subscription id'),
     cfg.StrOpt('region', help='Azure region'),
     cfg.StrOpt('resource_group', help="Azure resource group"),
+    cfg.StrOpt('storage_account_name', help="Azure storage account name"),
     cfg.StrOpt(
         'vm_admin_username',
         default='azureuser',

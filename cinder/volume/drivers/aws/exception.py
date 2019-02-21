@@ -18,3 +18,7 @@ from cinder.i18n import _
 
 class AvailabilityZoneNotFound(CinderException):
     message = _("Availability Zone %(az)s was not found")
+
+
+class AwsCredentialsNotFound(CinderException):
+    message = _("Aws credentials could not be found")

@@ -560,3 +560,15 @@ def create_disk_from_snapshot(compute, project, zone, name, snapshot_name,
 def create_image_from_disk(compute, project, name, disk_link):
     body = {"sourceDisk": disk_link, "name": name, "rawDisk": {}}
     return compute.images().insert(project=project, body=body).execute()
+
+
+def get_serial_port_output(compute, project, zone, name):
+    resp = compute.instances().getSerialPortOutput(
+        project=project, zone=zone, instance=name).execute()
+    output = resp['contents']
+    while resp['start'] != resp['next']:
+        resp = compute.instances().getSerialPortOutput(
+            project=project, zone=zone, instance=name,
+            start=resp['next']).execute()
+        output += resp['contents']
+    return output

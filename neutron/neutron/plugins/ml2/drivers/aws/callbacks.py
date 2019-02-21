@@ -24,6 +24,8 @@ def subscribe(mech_driver):
                        events.BEFORE_DELETE)
     registry.subscribe(mech_driver.secgroup_callback, resources.SECURITY_GROUP,
                        events.BEFORE_UPDATE)
+    registry.subscribe(mech_driver.secgroup_callback, resources.SECURITY_GROUP,
+                       events.AFTER_CREATE)
     registry.subscribe(mech_driver.secgroup_callback,
                        resources.SECURITY_GROUP_RULE, events.BEFORE_DELETE)
     registry.subscribe(mech_driver.secgroup_callback,
