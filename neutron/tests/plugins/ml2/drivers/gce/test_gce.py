@@ -16,7 +16,6 @@ import os
 
 from googleapiclient import errors as gce_errors
 from neutron.extensions import securitygroup as sg
-from neutron.manager import NeutronManager
 from neutron.plugins.ml2.drivers.gce.mech_gce import GceMechanismDriver
 from neutron.plugins.ml2.drivers.gce.mech_gce import \
     SecurityGroupInvalidDirection  # noqa
@@ -30,10 +29,7 @@ DATA_DIR = os.path.dirname(os.path.abspath("gce_mock.py")) + '/data'
 NETWORKS_LINK = "projects/omni-163105/global/networks"
 NETWORK_LINK = NETWORKS_LINK + "/net-03c4f178-670e-4805-a511-9470ca4a0b06"
 
-if hasattr(NeutronManager, "get_plugin"):
-    neutron_get_plugin = 'neutron.manager.NeutronManager.get_plugin'
-else:
-    neutron_get_plugin = 'neutron_lib.plugins.directory.get_plugin'
+neutron_get_plugin = 'neutron_lib.plugins.directory.get_plugin'
 
 
 class GCENeutronTestCase(test_sg.SecurityGroupsTestCase, base.BaseTestCase):

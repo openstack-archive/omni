@@ -704,6 +704,14 @@ class GCEDriver(driver.ComputeDriver):
     def get_vnc_console(self, context, instance):
         raise NotImplementedError()
 
+    def get_console_output(self, context, instance):
+        compute, project, zone = self.gce_svc, self.gce_project, self.gce_zone
+        gce_id = self._get_gce_name_from_instance(instance)
+        LOG.info("Getting console output for gce instance: %s", gce_id)
+        output = gceutils.get_serial_port_output(compute, project, zone,
+                                                 gce_id)
+        return output
+
     def get_spice_console(self, instance):
         """Simple Protocol for Independent Computing Environments"""
         raise NotImplementedError()

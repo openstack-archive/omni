@@ -10,19 +10,24 @@ WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 License for the specific language governing permissions and limitations
 under the License.
 """
-
+import hashlib
 import logging
+import uuid
 
+import glance.registry.client.v1.api as registry
 from glance_store import capabilities
 import glance_store.driver
 from glance_store import exceptions
 from glance_store.i18n import _
 import glance_store.location
 from oslo_config import cfg
+from oslo_utils import units
 from six.moves import urllib
 
 import boto3
 import botocore.exceptions
+
+from glance_store._drivers import awsutils
 
 LOG = logging.getLogger(__name__)
 
@@ -33,6 +38,17 @@ aws_opts_group = cfg.OptGroup(name='aws', title='AWS specific options')
 aws_opts = [cfg.StrOpt('access_key', help='AWS access key ID'),
             cfg.StrOpt('secret_key', help='AWS secret access key'),
             cfg.StrOpt('region_name', help='AWS region name')]
+
+keystone_opts_group = cfg.OptGroup(
+    name='keystone_credentials', title='Keystone credentials')
+
+keystone_opts = [cfg.StrOpt('region_name', help='Keystone region name'), ]
+
+
+def _get_image_uuid(ami_id):
+    md = hashlib.md5()
+    md.update(ami_id)
+    return str(uuid.UUID(bytes=md.digest()))
 
 
 class StoreLocation(glance_store.location.StoreLocation):
@@ -67,6 +83,7 @@ class StoreLocation(glance_store.location.StoreLocation):
             LOG.info(_("No image ami_id specified in URL"))
             raise exceptions.BadStoreUri(uri=uri)
         self.ami_id = ami_id
+        self.image_id = pieces.path.strip('/')
 
 
 class Store(glance_store.driver.Store):
@@ -80,22 +97,20 @@ class Store(glance_store.driver.Store):
         super(Store, self).__init__(conf)
         conf.register_group(aws_opts_group)
         conf.register_opts(aws_opts, group=aws_opts_group)
-        self.credentials = {}
-        self.credentials['aws_access_key_id'] = conf.aws.access_key
-        self.credentials['aws_secret_access_key'] = conf.aws.secret_key
-        self.credentials['region_name'] = conf.aws.region_name
-        self.__ec2_client = None
-        self.__ec2_resource = None
+        conf.register_group(keystone_opts_group)
+        conf.register_opts(keystone_opts, group=keystone_opts_group)
+        self.conf = conf
+        self.region_name = conf.aws.region_name
 
-    def _get_ec2_client(self):
-        if self.__ec2_client is None:
-            self.__ec2_client = boto3.client('ec2', **self.credentials)
-        return self.__ec2_client
+    def _get_ec2_client(self, context, tenant):
+        creds = awsutils.get_credentials(context, tenant, conf=self.conf)
+        creds['region_name'] = self.region_name
+        return boto3.client('ec2', **creds)
 
-    def _get_ec2_resource(self):
-        if self.__ec2_resource is None:
-            self.__ec2_resource = boto3.resource('ec2', **self.credentials)
-        return self.__ec2_resource
+    def _get_ec2_resource(self, context, tenant):
+        creds = awsutils.get_credentials(context, tenant, conf=self.conf)
+        creds['region_name'] = self.region_name
+        return boto3.resource('ec2', **creds)
 
     @capabilities.check
     def get(self, location, offset=0, chunk_size=None, context=None):
@@ -118,8 +133,11 @@ class Store(glance_store.driver.Store):
                   from glance_store.location.get_location_from_uri()
         :raises NotFound if image does not exist
         """
-        ami_id = location.get_store_uri().split('/')[2]
-        aws_client = self._get_ec2_client()
+        ami_id = location.store_location.ami_id
+        image_id = location.store_location.image_id
+        image_info = registry.get_image_metadata(context, image_id)
+        project_id = image_info['owner']
+        aws_client = self._get_ec2_client(context, project_id)
         aws_imgs = aws_client.describe_images(Owners=['self'])['Images']
         for img in aws_imgs:
             if ami_id == img.get('ImageId'):
@@ -133,6 +151,33 @@ class Store(glance_store.driver.Store):
         """
         return ('aws',)
 
+    def _get_size_from_properties(self, image_info):
+        """
+        :param image_info dict object, supplied from
+                          registry.get_image_metadata
+        :retval int: size of image in bytes or -1 if size could not be fetched
+                     from image properties alone
+        """
+        img_size = -1
+        if 'properties' in image_info:
+            img_props = image_info['properties']
+            if img_props.get('aws_root_device_type') == 'ebs' and \
+                    'aws_ebs_vol_sizes' in img_props:
+                ebs_vol_size_str = img_props['aws_ebs_vol_sizes']
+                img_size = 0
+                # sizes are stored as string - "[8, 16]"
+                # Convert it to array of int
+                ebs_vol_sizes = [int(vol.strip()) for vol in
+                                 ebs_vol_size_str.replace('[', '').
+                                 replace(']', '').split(',')]
+                for vol_size in ebs_vol_sizes:
+                    img_size += vol_size
+            elif img_props.get('aws_root_device_type') != 'ebs':
+                istore_vols = int(img_props.get('aws_num_istore_vols', '0'))
+                if istore_vols >= 1:
+                    img_size = 0
+        return img_size
+
     def get_size(self, location, context=None):
         """
         Takes a `glance_store.location.Location` object that indicates
@@ -142,20 +187,31 @@ class Store(glance_store.driver.Store):
                         from glance_store.location.get_location_from_uri()
         :retval int: size of image file in bytes
         """
-        ami_id = location.get_store_uri().split('/')[2]
-        ec2_resource = self._get_ec2_resource()
+        ami_id = location.store_location.ami_id
+        image_id = location.store_location.image_id
+        image_info = registry.get_image_metadata(context, image_id)
+        project_id = image_info['owner']
+        ec2_resource = self._get_ec2_resource(context, project_id)
         image = ec2_resource.Image(ami_id)
-        size = 0
+        size = self._get_size_from_properties(image_info)
+        if size >= 0:
+            LOG.debug('Got image size from properties as %d' % size)
+            # Convert size in gb to bytes
+            size *= units.Gi
+            return size
         try:
             image.load()
-            # no size info for instance-store volumes, so return 0 in that case
+            # no size info for instance-store volumes, so return 1 in that case
+            # Setting size as 0 fails multiple checks in glance required for
+            # successful creation of image record.
+            size = 1
             if image.root_device_type == 'ebs':
                 for bdm in image.block_device_mappings:
                     if 'Ebs' in bdm and 'VolumeSize' in bdm['Ebs']:
                         LOG.debug('ebs info: %s' % bdm['Ebs'])
                         size += bdm['Ebs']['VolumeSize']
                 # convert size in gb to bytes
-                size *= 1073741824
+                size *= units.Gi
         except botocore.exceptions.ClientError as ce:
             if ce.response['Error']['Code'] == 'InvalidAMIID.NotFound':
                 raise exceptions.ImageDataNotFound()
