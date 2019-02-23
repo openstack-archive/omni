@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Save trace setting
+XTRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+OMNI_DATA_DIR="/opt/stack/omni"
+
+# Functions
+# ------------
+
+function copy_files {
+    # Glance files
+    sudo cp -R $OMNI_DATA_DIR/glance/glance_store/_drivers/ /usr/local/lib/python2.7/dist-packages/glance_store/
+
+    # Cinder files
+    sudo cp -R $OMNI_DATA_DIR/cinder/volume/drivers/ /opt/stack/cinder/cinder/volume/
+
+    # Nova files
+    sudo cp -R $OMNI_DATA_DIR/nova/virt/ /opt/stack/nova/nova/
+
+    # Neutron files
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/common/ /opt/stack/neutron/neutron/
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/db/ /opt/stack/neutron/neutron/
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/extensions/ /opt/stack/neutron/neutron/
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/plugins/ml2/drivers/ /opt/stack/neutron/neutron/plugins/ml2/
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/plugins/ml2/extensions/ /opt/stack/neutron/neutron/plugins/ml2/
+    sudo cp -R $OMNI_DATA_DIR/neutron/neutron/services/l3_router/ /opt/stack/neutron/neutron/services/
+    sudo neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head
+}
+
+function restart_services {
+    sudo systemctl restart devstack@g-api.service devstack@g-reg.service devstack@c-sch.service devstack@c-vol.service devstack@c-api.service devstack@n-cpu.service devstack@q-svc.service
+}
+
+# Restore xtrace
+$XTRACE
+
+## Local variables:
+## mode: shell-script
+## End:
