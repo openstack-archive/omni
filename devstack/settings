@@ -21,8 +21,8 @@ GCE_SERVICE_PLUGIN=${GCE_SERVICE_PLUGIN:-neutron.services.l3_router.gce_router_p
 # AWS specific variables
 SECRET_KEY=${SECRET_KEY:-}
 ACCESS_KEY=${ACCESS_KEY:-}
-REGION_NAME=${REGION_NAME:-us-east-2}
 AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-us-east-2a}
+REGION_NAME=${REGION_NAME:-us-east-2}
 AWS_CINDER_DRIVER=${AWS_CINDER_DRIVER:-cinder.volume.drivers.aws.ebs.EBSDriver}
 AWS_COMPUTE_DRIVER=${AWS_COMPUTE_DRIVER:-ec2.EC2Driver}
 AWS_SERVICE_PLUGIN=${AWS_SERVICE_PLUGIN:-neutron.services.l3_router.aws_router_plugin.AwsRouterPlugin}
