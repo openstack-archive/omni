@@ -1024,7 +1024,6 @@ class AwsUtils(object):
             return self._filter_default_sec_groups(response['SecurityGroups'])
         return []
 
-    @aws_exception
     def delete_security_group(self, openstack_id, context, project_id=None,
                               group_name=None):
         aws_secgroups = self.get_sec_group_by_id(
