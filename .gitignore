@@ -9,3 +9,5 @@ build/*
 creds_manager/build/*
 .testrepository
 openstack
+.DS_Store
+devstack/.DS_Store
