@@ -26,15 +26,15 @@ Following lines need to be added in local.conf to enable Omni plugin:
 
 *3. Parameters required for Omni drivers:*
 
-==================    =====
----------------------------
-  AWS                  GCE
-==================    =====
-SECRET_KEY            ZONE
-ACCESS_KEY            PROJECT_ID
-REGION_NAME           REGION
-AVAILABILITY_ZONE
-==================    =====
+==================        =====
+-------------------------------------
+  AWS                     GCE
+==================        =====
+AWS_SECRET_KEY            ZONE
+AWS_ACCESS_KEY            PROJECT_ID
+AWS_REGION_NAME           REGION
+AWS_AVAILABILITY_ZONE
+==================        =====
 
 Run stack.sh in your devstack tree to get started.
 
