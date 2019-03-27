@@ -14,9 +14,8 @@ ML2_CONF="/etc/neutron/plugins/ml2/ml2_conf.ini"
 
 function set_aws_keys_and_region {
     local conf_file=$1
-    iniset $conf_file AWS secret_key ${AWS_SECRET_KEY}
-    iniset $conf_file AWS access_key ${AWS_ACCESS_KEY}
     iniset $conf_file AWS region_name ${AWS_REGION_NAME}
+    iniset $conf_file AWS az ${AWS_AVAILABILITY_ZONE}
 }
 
 function configure_glance {
@@ -35,14 +34,13 @@ function configure_glance {
 
 function configure_cinder {
     set_aws_keys_and_region $CINDER_CONF
-    iniset $CINDER_CONF AWS az ${AWS_AVAILABILITY_ZONE}
     iniset $CINDER_CONF AWS volume_driver ${AWS_CINDER_DRIVER}
     iniset $CINDER_CONF DEFAULT enable_force_upload ${ENABLE_FORCE_UPLOAD}
     iniset $CINDER_CONF DEFAULT enabled_backends AWS
     iniset $CINDER_CONF DEFAULT volumes_dir ${VOLUME_DIR}
     iniset $CINDER_CONF DEFAULT os_privileged_user_name ${CINDER_USER}
     iniset $CINDER_CONF DEFAULT default_volume_type AWS
-    iniset $CINDER_CONF DEFAULT os_region_name AWS
+    iniset $CINDER_CONF DEFAULT os_region_name ${OS_REGION_NAME}
 }
 
 function configure_nova {
@@ -53,14 +51,22 @@ function configure_nova {
     iniset $NOVA_CONF DEFAULT vnc_enabled True
     iniset $NOVA_CONF DEFAULT osapi_compute_extension ${COMPUTE_EXTENSION}
     iniset $NOVA_CONF DEFAULT force_dhcp_release True
+    iniset $NOVA_CONF keystone_authtoken identity_uri "http://${SERVICE_HOST}/identity"
+    iniset $NOVA_CONF keystone_authtoken username $admin_user
+    iniset $NOVA_CONF keystone_authtoken password $SERVICE_PASSWORD
+    iniset $NOVA_CONF keystone_authtoken project_name $SERVICE_PROJECT_NAME
+    iniset $NOVA_CONF keystone_authtoken admin_user $admin_user
+    iniset $NOVA_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $NOVA_CONF keystone_authtoken admin_tenant_name $SERVICE_PROJECT_NAME
+    iniset $NOVA_CONF keystone_authtoken region_name ${OS_REGION_NAME}
 }
 
 function configure_neutron {
     set_aws_keys_and_region $NEUTRON_CONF
-    iniset $NEUTRON_CONF AWS az ${AWS_AVAILABILITY_ZONE}
     iniset $NEUTRON_CONF DEFAULT core_plugin ${CORE_PLUGIN}
     iniset $NEUTRON_CONF DEFAULT service_plugins ${AWS_SERVICE_PLUGIN}
-    iniset $NEUTRON_CONF nova region_name AWS
+    iniset $NEUTRON_CONF nova region_name ${OS_REGION_NAME}
+    iniset $NEUTRON_CONF keystone_authtoken auth_uri "http://${SERVICE_HOST}/identity"
 
     iniset $ML2_CONF ml2 type_drivers ${ML2_DRIVERS}
     iniset $ML2_CONF ml2 tenant_network_types ${ML2_TENANT}

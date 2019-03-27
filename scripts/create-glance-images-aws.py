@@ -137,9 +137,9 @@ class RestClient(object):
 
         os_username = os.getenv('OS_USERNAME')
         os_password = os.getenv('OS_PASSWORD')
-        os_tenant_name = os.getenv('OS_TENANT_NAME')
+        os_tenant_name = os.getenv('OS_PROJECT_NAME')
 
-        self.glance_endpoint = os_auth_url.replace('keystone/v3', 'glance')
+        self.glance_endpoint = os_auth_url.replace('identity/v3', 'image')
         sys.stdout.write('Using glance endpoint: ' + self.glance_endpoint)
 
         v3_auth = v3.Password(auth_url=os_auth_url, username=os_username,

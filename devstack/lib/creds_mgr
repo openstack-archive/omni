@@ -1,0 +1,179 @@
+#!/bin/bash -xe
+
+# Save trace setting
+XTRACE=$(set +o | grep xtrace)
+set +o xtrace
+
+
+PROJECT_NAME="credsmgr"
+OMNI_DATA_DIR="/opt/stack/omni"
+CINDER_DIR="/opt/stack/cinder"
+NOVA_DIR="/opt/stack/nova"
+CREDSMGR_DIR="/opt/stack/credsmgr"
+CREDSMGR_SERVICE_NAME=devstack@credsmgr.service
+STACK_USER="stack"
+CREDSMGR_CONF="/etc/credsmgr/credsmgr.conf"
+CREDSMGR_URL="http://${SERVICE_HOST}:8091/"
+FERNET_SALT=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)
+FERNET_PASSWORD=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 16 | head -n 1)
+
+function install_credsmgr {
+    install_dependencies
+
+    sudo cp -R $OMNI_DATA_DIR/creds_manager/credsmgr $CREDSMGR_DIR/lib/python2.?/site-packages/
+    sudo cp -R $OMNI_DATA_DIR/creds_manager/etc/* /etc/
+
+    # Remove the default credsmgr.conf and write the file afresh.
+    sudo rm -f /etc/credsmgr/credsmgr.conf
+
+    # Grant permissions on /etc folders
+    sudo chown -R $STACK_USER:$STACK_USER /etc/credsmgr
+    sudo chown -R $STACK_USER:$STACK_USER /etc/logrotate.d
+    sudo chown -R $STACK_USER:$STACK_USER /etc/rsyslog.d
+
+    create_service_file
+
+    init_credsmgr
+    update_credsmgr_config
+    create_credsmgr_accounts
+
+    configure_creds_decryption_for_ostack_components $NOVA_CONF
+    configure_creds_decryption_for_ostack_components $NEUTRON_CONF
+    configure_creds_decryption_for_ostack_components $GLANCE_API_CONF
+    configure_creds_decryption_for_ostack_components $CINDER_CONF
+
+    # Change the code in specific services' file to fetch credsmgr endpoints in the service_catalog object created in their contexts
+    fetch_credsmgr_in_service_catalog
+
+    restart_services
+    start_credsmgr_service
+    sleep 20
+
+    # Create and associate credentials with tenant id
+    create_and_associate_credentials
+}
+
+function install_dependencies {
+    # Create virtualenv and install credsmgr dependencies
+    virtualenv $CREDSMGR_DIR
+
+    export PBR_VERSION=1.8.1
+    $CREDSMGR_DIR/bin/python $CREDSMGR_DIR/bin/pip install \
+    -chttps://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt?h=stable/newton \
+    -r $OMNI_DATA_DIR/creds_manager/requirements.txt
+
+    cp -r $OMNI_DATA_DIR/credsmgrclient $CREDSMGR_DIR/lib/python2.?/site-packages/
+
+    cd $OMNI_DATA_DIR/creds_manager
+    $CREDSMGR_DIR/bin/python setup.py install
+}
+
+function create_service_file {
+cat <<EOF | sudo tee /etc/systemd/system/$CREDSMGR_SERVICE_NAME
+[Unit]
+Description=Devstack $CREDSMGR_SERVICE_NAME
+After=network.target
+ConditionPathExists=/opt/stack/credsmgr/bin/python
+ConditionPathExists=/opt/stack/credsmgr/bin/credsmgr-api
+[Service]
+Type=simple
+User=stack
+WorkingDirectory=/opt/stack/credsmgr
+ExecStart=/opt/stack/credsmgr/bin/python /opt/stack/credsmgr/bin/credsmgr-api --config-file /etc/credsmgr/credsmgr.conf
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=credsmgr_api
+PIDFile=/var/run/credsmgr/credsmgr.pid
+PermissionsStartOnly=True
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+function init_credsmgr {
+    recreate_database credsmgr
+    time_start "dbsync"
+    local dburl
+    dburl=$(database_connection_url credsmgr)
+    iniset $CREDSMGR_CONF database connection $dburl
+    $CREDSMGR_DIR/bin/python $CREDSMGR_DIR/bin/credsmgr-manage
+    time_stop "dbsync"
+}
+
+function update_credsmgr_config {
+    iniset $CREDSMGR_CONF DEFAULT credsmgr_api_listen_port 8091
+    iniset $CREDSMGR_CONF DEFAULT credsmgr_api_use_ssl False
+    iniset $CREDSMGR_CONF DEFAULT credsmgr_api_workers 1
+
+    iniset $CREDSMGR_CONF keystone_authtoken auth_type password
+    iniset $CREDSMGR_CONF keystone_authtoken auth_url "http://${SERVICE_HOST}/identity"
+    iniset $CREDSMGR_CONF keystone_authtoken username "credsmgr"
+    iniset $CREDSMGR_CONF keystone_authtoken password $SERVICE_PASSWORD
+    iniset $CREDSMGR_CONF keystone_authtoken user_domain_name "$SERVICE_DOMAIN_NAME"
+    iniset $CREDSMGR_CONF keystone_authtoken project_name "service"
+    iniset $CREDSMGR_CONF keystone_authtoken project_domain_name "$SERVICE_DOMAIN_NAME"
+    iniset $CREDSMGR_CONF keystone_authtoken identity_uri $KEYSTONE_AUTH_URI
+
+    iniset $CREDSMGR_CONF credsmgr encryptor "credsmgrclient.encryption.noop.NoEncryption"
+    # uncomment following code when encryptor class is "credsmgrclient.encryption.fernet.FernetKeyEncryption"
+    # iniset $CREDSMGR_CONF credsmgr fernet_salt $FERNET_SALT
+    # iniset $CREDSMGR_CONF credsmgr fernet_password $FERNET_PASSWORD
+}
+
+function restart_credsmgr_service {
+    sudo systemctl restart $CREDSMGR_SERVICE_NAME
+}
+
+function start_credsmgr_service {
+    sudo systemctl start $CREDSMGR_SERVICE_NAME
+}
+
+function stop_credsmgr_service {
+    sudo systemctl stop $CREDSMGR_SERVICE_NAME
+}
+
+function create_credsmgr_accounts {
+    create_service_user "credsmgr"
+
+    get_or_create_service $PROJECT_NAME $PROJECT_NAME "Credentials manager"
+    get_or_create_endpoint $PROJECT_NAME $OS_REGION_NAME $CREDSMGR_URL \
+        $CREDSMGR_URL $CREDSMGR_URL
+}
+
+function configure_creds_decryption_for_ostack_components {
+    local conf_file=$1
+    iniset $conf_file credsmgr encryptor "credsmgrclient.encryption.noop.NoEncryption"
+    # uncomment following code when encryptor class is "credsmgrclient.encryption.fernet.FernetKeyEncryption"
+    # iniset $conf_file credsmgr fernet_salt $FERNET_SALT
+    # iniset $conf_file credsmgr fernet_password $FERNET_PASSWORD
+}
+
+# Few services have service_catalog object prepopulated with selected services' endpoints.
+# We need to edit this code to make it fetch credsmgr endpoints as well.
+function fetch_credsmgr_in_service_catalog {
+    # Change cinder's context.py file to fetch the credsmgr endpoints along with other endpoints.
+    sudo sed -i "s/'image'/'image', 'credsmgr'/g" ${CINDER_DIR}/cinder/context.py
+    sudo sed -i -e "s/, 'placement'/, 'placement', 'credsmgr'/g" ${NOVA_DIR}/nova/context.py
+    # Use this space to add similar code as above to edit the code in the specific services if required
+    # .
+    # .
+    # .
+}
+
+function create_and_associate_credentials {
+    source $TOP_DIR/openrc "" "" "" ""
+
+    local token
+    local tenant_id
+    token=$(openstack token issue -c id -f value)
+    tenant_id=$(openstack project show "admin" -f value -c id)
+    cred_id=$(curl $CREDSMGR_URL/v1/credentials/aws -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X POST -d "{\"aws_access_key_id\": \"${AWS_ACCESS_KEY}\", \"aws_secret_access_key\": \"${AWS_SECRET_KEY}\"}")
+    cred_id=$(echo $cred_id | awk {'print$2'} | cut -d"}" -f1 | tr -d '"')
+    curl -i $CREDSMGR_URL/v1/credentials/aws/$cred_id/association -H "X-Auth-Token: $token" -H "Content-Type: application/json" -X POST -d "{\"tenant_id\": \"${tenant_id}\"}"
+}
+
+# Restore xtrace
+$XTRACE
+
+## mode: shell-script
+## End:
