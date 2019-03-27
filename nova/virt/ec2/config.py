@@ -46,10 +46,24 @@ aws_opts = [
                 help='Listen to keypair delete notifications and act on them')
 ]
 
+keystone_authtoken_group = cfg.OptGroup(name='keystone_authtoken',
+                                        title='Options to connect to Keystone')
+
+keystone_authtoken_opts = [
+        cfg.StrOpt('identity_uri', help='Keystone url'),
+        cfg.StrOpt('username', help='Username'),
+        cfg.StrOpt('password', help='Password'),
+        cfg.StrOpt('project_name', help='Project name'),
+        cfg.StrOpt('region_name', help='AWS region name')
+]
+
 CONF = cfg.CONF
 
 CONF.register_group(aws_group)
 CONF.register_opts(aws_opts, group=aws_group)
+CONF.register_group(keystone_authtoken_group)
+CONF.register_opts(keystone_authtoken_opts, group=keystone_authtoken_group)
+
 
 EC2_STATE_MAP = {
     "pending": power_state.NOSTATE,
